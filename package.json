@@ -1,0 +1,39 @@
+{
+  "name": "web-locks",
+  "description": "support Web Locks API work in major browsers",
+  "version": "0.0.1",
+  "main": "index.js",
+  "dependencies": {
+    "fsevents": "^2.1.3"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "clean": "rimraf dist",
+    "build": "yarn clean && rollup -c && tsc",
+    "commit": "yarn git-cz"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aermin/web-locks.git"
+  },
+  "keywords": [
+    "Web",
+    "Locks",
+    "Web Locks"
+  ],
+  "author": "aermin",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/aermin/web-locks/issues"
+  },
+  "homepage": "https://github.com/aermin/web-locks#readme",
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^17.0.0",
+    "@rollup/plugin-node-resolve": "^11.0.0",
+    "git-cz": "^4.7.5",
+    "rimraf": "^3.0.2",
+    "rollup": "^2.34.1",
+    "rollup-plugin-terser": "^7.0.2",
+    "typescript": "^4.1.2"
+  }
+}
