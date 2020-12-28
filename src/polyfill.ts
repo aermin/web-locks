@@ -1,5 +1,6 @@
 import { BroadcastChannel } from "broadcast-channel";
 import uuid from 'uuid';
+
 interface Options {
   mode?: "exclusive" | "shared";
   ifAvailable?: Boolean;
@@ -41,7 +42,18 @@ export class WebLocks {
   }
 
   async request(lockName: string, options?: Options, fn?: LockFn) {
+
+    let func;
+    if (typeof options === "function" && !fn) {
+      func = options;
+    } else if (!options && fn) {
+      func = fn;
+    } else {
+      throw Error("please input right options");
+    }
     this._options = { ...this.defaultOptions, ...options };
+
+
     const key = this._registerLockRequest(lockName);
     // polling ask if lock was granted
     await this.pollingAskGrante(key, async () => await fn({ name: lockName, mode: this._options.mode }))
