@@ -3,13 +3,12 @@ import { WebLocks } from "./polyfill";
 const locks = (function () {
   if (!window?.navigator?.locks) {
     const webLocks = new WebLocks();
-    Object.defineProperty(window?.navigator, 'locks', {
+    Object.defineProperty(window, 'navigator', {
       value: {
-        request: webLocks.request
+        locks: webLocks
       },
-      writable: false
-    })
-    console.log("navigator.locks~~", window.navigator.locks);
+      writable: true
+   })
   }
   return window.navigator.locks;
 })();

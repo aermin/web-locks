@@ -1,5 +1,4 @@
 import { BroadcastChannel } from "broadcast-channel";
-import uuid from 'uuid';
 
 interface Options {
   mode?: "exclusive" | "shared";
@@ -17,6 +16,10 @@ type LockFnParams = Pick<Options, "mode"> & {
 };
 
 type LockFn = ({ name, mode }: LockFnParams) => any;
+
+async function sleep(ms) {
+  return new Promise(resolve => setTimeout(() => resolve(), ms));
+}
 
 export class WebLocks {
   private _reqChannel: BroadcastChannel<Message>;
@@ -56,7 +59,7 @@ export class WebLocks {
 
     const key = this._registerLockRequest(lockName);
     // polling ask if lock was granted
-    await this.pollingAskGrante(key, async () => await fn({ name: lockName, mode: this._options.mode }))
+    await this.pollingAskGrante(key, async () => await func({ name: lockName, mode: this._options.mode }))
   }
 
   disGrante(key) {
@@ -68,6 +71,7 @@ export class WebLocks {
       return;
     } else if (await this.checkIsGranted(key, 3000)) {
       //if the lock is granted in one tab, continue polling ask, else grante this tab
+      await sleep(3000);
       this.pollingAskGrante(key, cb);
     } else {
       this.grante();
@@ -77,7 +81,7 @@ export class WebLocks {
   }
 
   private _registerLockRequest(lockName) {
-    const key = `${lockName}${uuid.v4()}`;
+    const key = `${lockName}${new Date().getTime()}`;
     this.grantedSet.add(key);
     return key;
   }
