@@ -7,10 +7,6 @@ interface Options {
   signal?: AbortSignal;
 }
 
-interface Message {
-  key: string;
-}
-
 type LockFnParams = Pick<Options, "mode"> & {
   name: string;
 };
@@ -22,11 +18,9 @@ async function sleep(ms) {
 }
 
 export class WebLocks {
-  private _reqChannel: BroadcastChannel<Message>;
-  private _resChannel: BroadcastChannel<Message>;
+  private _channel: BroadcastChannel;
   private _options: Options;
   public defaultOptions: Options;
-  public grantedSet: Set<string>;
   constructor() {
     const controller = new AbortController();
     this.defaultOptions = {
@@ -38,10 +32,39 @@ export class WebLocks {
     this.init();
   }
 
+  get grantedQueue() {
+    const grantedQueue = window.localStorage.getItem('grantedQueue');
+    return grantedQueue ? JSON.parse(window.localStorage.getItem('grantedQueue')) : null;
+  }
+
+  _addGrantedQueue(lockName?: string) {
+    const grantedQueue = this.grantedQueue || [];
+    let key;
+    if (lockName) {
+      key = `${lockName}${new Date().getTime()}`;
+      grantedQueue.push(key);
+    }
+    window.localStorage.setItem('grantedQueue', JSON.stringify(grantedQueue));
+    return key;
+  }
+
+  _deleteGrantedQueue(key: string) {
+    const firstQueue = this.grantedQueue[0];
+    if (firstQueue) {
+      if (firstQueue === key) {
+        const newQueue = this.grantedQueue.shift();
+        window.localStorage.setItem('grantedQueue', JSON.stringify(newQueue));
+      } else {
+        throw ('the first key in queue is not equal to the key should be delete!')
+      }
+    }
+  }
+
   init() {
-    this._reqChannel = new BroadcastChannel("request");
-    this._resChannel = new BroadcastChannel("Response");
-    this.grantedSet = new Set();
+    this._channel = new BroadcastChannel("web-locks");
+    if (!this.grantedQueue) {
+      this._addGrantedQueue();
+    }
   }
 
   async request(lockName: string, options?: Options, fn?: LockFn) {
@@ -56,57 +79,26 @@ export class WebLocks {
     }
     this._options = { ...this.defaultOptions, ...options };
 
-
-    const key = this._registerLockRequest(lockName);
-    // polling ask if lock was granted
-    await this.pollingAskGrante(key, async () => await func({ name: lockName, mode: this._options.mode }))
-  }
-
-  disGrante(key) {
-    this.grantedSet.delete(key);
-  }
-
-  async pollingAskGrante(key, cb) {
-    if (!this.grantedSet.has(key)) {
-      return;
-    } else if (await this.checkIsGranted(key, 3000)) {
-      //if the lock is granted in one tab, continue polling ask, else grante this tab
-      await sleep(3000);
-      this.pollingAskGrante(key, cb);
+    if (this.grantedQueue && this.grantedQueue.length === 0) {
+      const grantedKeyInQueue = this._addGrantedQueue(lockName);
+      await func({ name: lockName, mode: this._options.mode });
+      this._afterRequestEventFinished(grantedKeyInQueue);
     } else {
-      this.grante();
-      await cb();
-      this.disGrante(key);
+      const grantedKeyInQueue = this._addGrantedQueue(lockName);
+      this._channel.onmessage(async ({ key }) => {
+        if (key === grantedKeyInQueue) {
+          await func({ name: lockName, mode: this._options.mode });
+          this._afterRequestEventFinished(grantedKeyInQueue);
+        }
+      })
     }
   }
 
-  private _registerLockRequest(lockName) {
-    const key = `${lockName}${new Date().getTime()}`;
-    this.grantedSet.add(key);
-    return key;
-  }
-
-  grante() {
-    this._reqChannel.onmessage = ({ key }) => {
-      if (this.grantedSet.has(key)) {
-        this._resChannel.postMessage({ key });
-      }
-    };
-  }
-
-  checkIsGranted(checkKey, delay) {
-    return new Promise((resolve, reject) => {
-      try {
-        this._resChannel.onmessage = ({ key }) => {
-          if (key === checkKey) {
-            resolve(true);
-          }
-        };
-        this._reqChannel.postMessage({ key: checkKey });
-        setTimeout(() => resolve(false), delay);
-      } catch (error) {
-        reject(error);
-      }
-    });
+  private _afterRequestEventFinished(grantedKeyInQueue) {
+    this._deleteGrantedQueue(grantedKeyInQueue);
+    const newFirstKey = this.grantedQueue[0];
+    if (newFirstKey) {
+      this._channel.postMessage({ key: newFirstKey });
+    }
   }
 }

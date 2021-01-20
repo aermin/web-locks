@@ -8,7 +8,7 @@ const locks = (function () {
         locks: webLocks
       },
       writable: true
-   })
+    })
   }
   return window.navigator.locks;
 })();
