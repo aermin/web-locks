@@ -1,5 +1,3 @@
-import { BroadcastChannel } from "broadcast-channel";
-
 interface Options {
   mode?: "exclusive" | "shared";
   ifAvailable?: Boolean;
@@ -13,14 +11,10 @@ type LockFnParams = Pick<Options, "mode"> & {
 
 type LockFn = ({ name, mode }: LockFnParams) => any;
 
-async function sleep(ms) {
-  return new Promise(resolve => setTimeout(() => resolve(), ms));
-}
-
 export class WebLocks {
-  private _channel: BroadcastChannel;
   private _options: Options;
   public defaultOptions: Options;
+  protected selfGrantedQueue: string[] = [];
   constructor() {
     const controller = new AbortController();
     this.defaultOptions = {
@@ -29,45 +23,70 @@ export class WebLocks {
       steal: false,
       signal: controller.signal
     };
-    this.init();
+    this._init();
   }
 
-  get grantedQueue() {
+  get globalGrantedQueue() {
     const grantedQueue = window.localStorage.getItem('grantedQueue');
     return grantedQueue ? JSON.parse(window.localStorage.getItem('grantedQueue')) : null;
   }
 
-  _addGrantedQueue(lockName?: string) {
-    const grantedQueue = this.grantedQueue || [];
+  private _addGrantedKey(lockName?: string) {
+    const grantedQueue = this.globalGrantedQueue || [];
     let key;
     if (lockName) {
       key = `${lockName}${new Date().getTime()}`;
       grantedQueue.push(key);
+      this.selfGrantedQueue.push(key);
     }
     window.localStorage.setItem('grantedQueue', JSON.stringify(grantedQueue));
     return key;
   }
 
-  _deleteGrantedQueue(key: string) {
-    const firstQueue = this.grantedQueue[0];
-    if (firstQueue) {
-      if (firstQueue === key) {
-        const newQueue = this.grantedQueue.shift();
-        window.localStorage.setItem('grantedQueue', JSON.stringify(newQueue));
+  private _deleteFirstGrantedKey(key: string) {
+    const firstKey = this.globalGrantedQueue[0];
+    if (firstKey) {
+      if (firstKey === key) {
+        this._deleteGrantedKey(key);
       } else {
         throw ('the first key in queue is not equal to the key should be delete!')
       }
     }
   }
 
-  init() {
-    this._channel = new BroadcastChannel("web-locks");
-    if (!this.grantedQueue) {
-      this._addGrantedQueue();
+  private _deleteSelfGrantedKey(key: string) {
+    const selfQueueIndex = this.selfGrantedQueue.indexOf(key);
+    if (selfQueueIndex !== -1) {
+      this.selfGrantedQueue.splice(selfQueueIndex, 1);
+    } else {
+      throw ('could find this key in self granted queue!')
     }
   }
 
-  async request(lockName: string, options?: Options, fn?: LockFn) {
+  private _deleteGlobalGrantedKey(key: string) {
+    const tempQueue = [...this.globalGrantedQueue];
+    const globalQueueIndex = tempQueue.indexOf(key);
+    if (globalQueueIndex !== -1) {
+      tempQueue.splice(tempQueue.indexOf(globalQueueIndex), 1);
+      window.localStorage.setItem('grantedQueue', JSON.stringify(tempQueue));
+    } else {
+      throw ('could find this key in global granted queue!')
+    }
+  }
+
+  private _deleteGrantedKey(key: string) {
+    this._deleteSelfGrantedKey(key);
+    this._deleteGlobalGrantedKey(key);
+  }
+
+  private _init() {
+    if (!this.globalGrantedQueue) {
+      this._addGrantedKey();
+    }
+    this._onUnload();
+  }
+
+  protected async request(lockName: string, options?: Options, fn?: LockFn) {
 
     let func;
     if (typeof options === "function" && !fn) {
@@ -79,26 +98,45 @@ export class WebLocks {
     }
     this._options = { ...this.defaultOptions, ...options };
 
-    if (this.grantedQueue && this.grantedQueue.length === 0) {
-      const grantedKeyInQueue = this._addGrantedQueue(lockName);
+    if (this.globalGrantedQueue && this.globalGrantedQueue.length === 0) {
+      const grantedKeyInQueue = this._addGrantedKey(lockName);
       await func({ name: lockName, mode: this._options.mode });
-      this._afterRequestEventFinished(grantedKeyInQueue);
+      this._deleteFirstGrantedKey(grantedKeyInQueue);
     } else {
-      const grantedKeyInQueue = this._addGrantedQueue(lockName);
-      this._channel.onmessage(async ({ key }) => {
-        if (key === grantedKeyInQueue) {
+      const grantedKeyInQueue = this._addGrantedKey(lockName);
+      const listener = async () => {
+        if (grantedKeyInQueue === this.currentGrantedKey) {
           await func({ name: lockName, mode: this._options.mode });
-          this._afterRequestEventFinished(grantedKeyInQueue);
+          this._deleteFirstGrantedKey(grantedKeyInQueue);
+          window.removeEventListener('storage', listener)
         }
-      })
+      }
+      this._onStorageChange(listener);
     }
   }
 
-  private _afterRequestEventFinished(grantedKeyInQueue) {
-    this._deleteGrantedQueue(grantedKeyInQueue);
-    const newFirstKey = this.grantedQueue[0];
-    if (newFirstKey) {
-      this._channel.postMessage({ key: newFirstKey });
-    }
+  get currentGrantedKey() {
+    return this.globalGrantedQueue[0];
+  }
+
+  private _onUnload() {
+    window.addEventListener('unload', (e) => {
+      this.selfGrantedQueue.forEach(key => {
+        this._deleteGlobalGrantedKey(key);
+      });
+    });
+  }
+
+  private _onStorageChange(listener) {
+    window.addEventListener(
+      "storage",
+      function(event) {
+        if (event.storageArea === localStorage) {
+          console.log("event", event.oldValue, event.newValue);
+          listener();
+        }
+      },
+      false
+    );
   }
 }
