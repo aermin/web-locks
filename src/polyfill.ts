@@ -1,3 +1,5 @@
+import { onLocalStorageInit, onStorageChange } from './localStorageSubscribe';
+
 interface Options {
   mode?: "exclusive" | "shared";
   ifAvailable?: Boolean;
@@ -11,6 +13,8 @@ type LockFnParams = Pick<Options, "mode"> & {
 
 type LockFn = ({ name, mode }: LockFnParams) => any;
 
+
+const STORAGE_ITEM_KEY = 'grantedQueue';
 export class WebLocks {
   private _options: Options;
   public defaultOptions: Options;
@@ -27,8 +31,8 @@ export class WebLocks {
   }
 
   get globalGrantedQueue() {
-    const grantedQueue = window.localStorage.getItem('grantedQueue');
-    return grantedQueue ? JSON.parse(window.localStorage.getItem('grantedQueue')) : null;
+    const grantedQueue = window.localStorage.getItem(STORAGE_ITEM_KEY);
+    return grantedQueue ? JSON.parse(window.localStorage.getItem(STORAGE_ITEM_KEY)) : null;
   }
 
   private _addGrantedKey(lockName?: string) {
@@ -39,7 +43,7 @@ export class WebLocks {
       grantedQueue.push(key);
       this.selfGrantedQueue.push(key);
     }
-    window.localStorage.setItem('grantedQueue', JSON.stringify(grantedQueue));
+    window.localStorage.setItem(STORAGE_ITEM_KEY, JSON.stringify(grantedQueue));
     return key;
   }
 
@@ -67,8 +71,10 @@ export class WebLocks {
     const tempQueue = [...this.globalGrantedQueue];
     const globalQueueIndex = tempQueue.indexOf(key);
     if (globalQueueIndex !== -1) {
-      tempQueue.splice(tempQueue.indexOf(globalQueueIndex), 1);
-      window.localStorage.setItem('grantedQueue', JSON.stringify(tempQueue));
+      tempQueue.splice(globalQueueIndex, 1);
+      console.log('_deleteGrantedKey~~', key)
+      window.localStorage.setItem(STORAGE_ITEM_KEY, JSON.stringify(tempQueue));
+      console.log('_deleteGrantedKey --end', window.localStorage.getItem('grantedQueue'))
     } else {
       throw ('could find this key in global granted queue!')
     }
@@ -80,6 +86,7 @@ export class WebLocks {
   }
 
   private _init() {
+    onLocalStorageInit();
     if (!this.globalGrantedQueue) {
       this._addGrantedKey();
     }
@@ -105,13 +112,15 @@ export class WebLocks {
     } else {
       const grantedKeyInQueue = this._addGrantedKey(lockName);
       const listener = async () => {
+        console.log('grantedKeyInQueue, this.currentGrantedKey', grantedKeyInQueue, window.localStorage.getItem(STORAGE_ITEM_KEY), this.globalGrantedQueue[0]);
         if (grantedKeyInQueue === this.currentGrantedKey) {
           await func({ name: lockName, mode: this._options.mode });
           this._deleteFirstGrantedKey(grantedKeyInQueue);
-          window.removeEventListener('storage', listener)
+          return true;
         }
+        return false;
       }
-      this._onStorageChange(listener);
+      onStorageChange(STORAGE_ITEM_KEY, listener);
     }
   }
 
@@ -125,18 +134,5 @@ export class WebLocks {
         this._deleteGlobalGrantedKey(key);
       });
     });
-  }
-
-  private _onStorageChange(listener) {
-    window.addEventListener(
-      "storage",
-      function(event) {
-        if (event.storageArea === localStorage) {
-          console.log("event", event.oldValue, event.newValue);
-          listener();
-        }
-      },
-      false
-    );
   }
 }

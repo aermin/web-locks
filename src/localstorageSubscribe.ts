@@ -1,37 +1,46 @@
-
-function localStorageSubscribe() {
+export function onLocalStorageInit() {
     const originalSetItem = localStorage.setItem;
 
     localStorage.setItem = function (key, value) {
+        console.log('key, value', key, value);
         var event = new Event(key);
 
-        event.value = value; // Optional..
-        event.key = key; // Optional..
-
-        document.dispatchEvent(event);
+        event.value = value;
+        event.key = key;
 
         originalSetItem.apply(this, arguments);
+
+        document.dispatchEvent(event);
     };
 }
 
 
-function _onStorageChange(key, listener) {
-    document.addEventListener(key, listener, false);
+export function onStorageChange(key: string, listener: () => Promise<boolean> | boolean) {
+    let needRemoveListener = false;
+
+    document.addEventListener(key, async () => {
+        console.log('document.addEventListener', key, listener)
+        needRemoveListener = await listener()
+    }, false);
+
+
+    const windowListener = async (event) => {
+        if (event.storageArea === localStorage && event.key === key) {
+            console.log("event", event.oldValue, event.newValue);
+            needRemoveListener = await listener();
+            console.log('windowListener --end', needRemoveListener);
+        }
+    }
+
     window.addEventListener(
         "storage",
-        function (event) {
-            if (event.storageArea === localStorage && event.key === key) {
-                console.log("event", event.oldValue, event.newValue);
-                listener();
-            }
-        },
+        windowListener,
         false
     );
+
+    // unsubscribe Listener
+    if (needRemoveListener) {
+        document.removeEventListener(key, listener);
+        window.removeEventListener("storage", windowListener)
+    }
 }
-
-
-var localStorageSetHandler = function (e) {
-    console.log('localStorage.set("' + e.key + '", "' + e.value + '") was called');
-};
-
-localStorage.setItem('foo', 'bar'); // Pops an alert
