@@ -2,7 +2,6 @@ export function onLocalStorageInit() {
     const originalSetItem = localStorage.setItem;
 
     localStorage.setItem = function (key, value) {
-        console.log('key, value', key, value);
         var event = new Event(key);
 
         event.value = value;
@@ -19,16 +18,13 @@ export function onStorageChange(key: string, listener: () => Promise<boolean> | 
     let needRemoveListener = false;
 
     document.addEventListener(key, async () => {
-        console.log('document.addEventListener', key, listener)
         needRemoveListener = await listener()
     }, false);
 
 
     const windowListener = async (event) => {
         if (event.storageArea === localStorage && event.key === key) {
-            console.log("event", event.oldValue, event.newValue);
             needRemoveListener = await listener();
-            console.log('windowListener --end', needRemoveListener);
         }
     }
 

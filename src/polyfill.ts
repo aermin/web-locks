@@ -72,9 +72,7 @@ export class WebLocks {
     const globalQueueIndex = tempQueue.indexOf(key);
     if (globalQueueIndex !== -1) {
       tempQueue.splice(globalQueueIndex, 1);
-      console.log('_deleteGrantedKey~~', key)
       window.localStorage.setItem(STORAGE_ITEM_KEY, JSON.stringify(tempQueue));
-      console.log('_deleteGrantedKey --end', window.localStorage.getItem('grantedQueue'))
     } else {
       throw ('could find this key in global granted queue!')
     }
@@ -112,7 +110,6 @@ export class WebLocks {
     } else {
       const grantedKeyInQueue = this._addGrantedKey(lockName);
       const listener = async () => {
-        console.log('grantedKeyInQueue, this.currentGrantedKey', grantedKeyInQueue, window.localStorage.getItem(STORAGE_ITEM_KEY), this.globalGrantedQueue[0]);
         if (grantedKeyInQueue === this.currentGrantedKey) {
           await func({ name: lockName, mode: this._options.mode });
           this._deleteFirstGrantedKey(grantedKeyInQueue);
