@@ -1,6 +1,7 @@
 import { WebLocks } from "./polyfill";
 
 const locks = (function () {
+  // if (!window?.navigator?.locks || true) {
   if (!window?.navigator?.locks) {
     const webLocks = new WebLocks();
     Object.defineProperty(window, 'navigator', {
@@ -8,7 +9,7 @@ const locks = (function () {
         locks: webLocks
       },
       writable: true
-   })
+    })
   }
   return window.navigator.locks;
 })();
