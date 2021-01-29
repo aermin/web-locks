@@ -1,3 +1,5 @@
+[原始MDN链接](https://developer.mozilla.org/en-US/docs/Web/API/Web_Locks_API)
+
 > 实验
 > 这是一项实验性技术，请在生产中使用它之前仔细检查浏览器兼容性表。
 
