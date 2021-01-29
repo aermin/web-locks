@@ -55,7 +55,7 @@ await navigator.locks.request('my_resource', async lock => {
 await do_something_else_without_lock();
 ```
 
-## Options参数
+### Options参数
 
 请求锁定时可以传递几个选项：
 
@@ -65,11 +65,11 @@ await do_something_else_without_lock();
 
 - ifAvailable: 如果指定，且在锁不能马上被授予的情况下(没有等待)，lock request将失败。The callback is invoked with null.
 
-## Monitoring监控方式
+### Monitoring监控方式
 
 脚本可以使用navigator.locks.query()方法对源的锁管理器的状态进行内省。这在调试时很有用，例如，确定为什么无法获取锁。结果是锁管理器状态的快照，该快照标识保留快照和请求的锁，以及在获取快照时有关每个锁的一些其他数据（例如模式）。
 
-## Advanced use高级使用
+### Advanced use高级使用
 
 对于更复杂的情况，例如在任意时间保持锁，回调可以返回由脚本显式解决的promise：
 
@@ -88,12 +88,12 @@ navigator.locks.request('my_resource', lock => {
 ```
 
 
-## Deadlocks死锁
+### Deadlocks死锁
 
 当进程由于每个部分都在等待无法满足的请求而无法继续进行时，将发生死锁。使用此API可能会在复杂的用例中发生这种情况，例如，如果无序请求多个锁。如果选项卡1持有锁A，而选项卡2持有锁B，则选项卡1尝试也获得锁B，而选项卡2尝试也获得锁A，则均不能授予任何请求。 Web应用程序可以通过几种策略来避免这种情况，例如确保锁定请求不嵌套，始终保持良好的顺序或超时。请注意，此类死锁只会影响锁本身，并取决于锁而影响代码；页面中的浏览器，其他选项卡和其他脚本不受影响。
 
 
-## Interfaces 接口
+### Interfaces 接口
 
 `Lock`
 
@@ -103,3 +103,10 @@ navigator.locks.request('my_resource', lock => {
 `LockManager`
 
 提供用于请求新的Lock对象和查询现有Lock对象的方法。要获取LockManager的实例，请调用navigator.locks。
+
+
+## Browser compatibility 浏览器支持
+
+### LockManager
+
+### Lock
