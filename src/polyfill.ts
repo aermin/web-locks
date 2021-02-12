@@ -92,33 +92,35 @@ export class WebLocks {
   }
 
   protected async request(lockName: string, options?: Options, fn?: LockFn) {
-
-    let func;
-    if (typeof options === "function" && !fn) {
-      func = options;
-    } else if (!options && fn) {
-      func = fn;
-    } else {
-      throw Error("please input right options");
-    }
-    this._options = { ...this.defaultOptions, ...options };
-
-    if (this.globalGrantedQueue && this.globalGrantedQueue.length === 0) {
-      const grantedKeyInQueue = this._addGrantedKey(lockName);
-      await func({ name: lockName, mode: this._options.mode });
-      this._deleteFirstGrantedKey(grantedKeyInQueue);
-    } else {
-      const grantedKeyInQueue = this._addGrantedKey(lockName);
-      const listener = async () => {
-        if (grantedKeyInQueue === this.currentGrantedKey) {
-          await func({ name: lockName, mode: this._options.mode });
-          this._deleteFirstGrantedKey(grantedKeyInQueue);
-          return true;
-        }
-        return false;
+    return new Promise(async (resolve, reject) => {
+      let func;
+      if (typeof options === "function" && !fn) {
+        func = options;
+      } else if (!options && fn) {
+        func = fn;
+      } else {
+        throw Error("please input right options");
       }
-      onStorageChange(STORAGE_ITEM_KEY, listener);
-    }
+      this._options = { ...this.defaultOptions, ...options };
+
+      if (this.globalGrantedQueue && this.globalGrantedQueue.length === 0) {
+        const grantedKeyInQueue = this._addGrantedKey(lockName);
+        await func({ name: lockName, mode: this._options.mode });
+        this._deleteFirstGrantedKey(grantedKeyInQueue);
+      } else {
+        const grantedKeyInQueue = this._addGrantedKey(lockName);
+        const listener = async () => {
+          if (grantedKeyInQueue === this.currentGrantedKey) {
+            await func({ name: lockName, mode: this._options.mode });
+            this._deleteFirstGrantedKey(grantedKeyInQueue);
+            resolve();
+            return true;
+          }
+          return false;
+        }
+        onStorageChange(STORAGE_ITEM_KEY, listener);
+      }
+    })
   }
 
   get currentGrantedKey() {
