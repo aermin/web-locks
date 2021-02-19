@@ -14,11 +14,11 @@ type LockFnParams = Pick<Options, "mode"> & {
 type LockFn = ({ name, mode }: LockFnParams) => any;
 
 
-const STORAGE_ITEM_KEY = 'grantedQueue';
+const STORAGE_ITEM_KEY = 'requestQueue';
 export class WebLocks {
   private _options: Options;
   public defaultOptions: Options;
-  protected selfGrantedQueue: string[] = [];
+  protected selfRequestQueue: string[] = [];
   constructor() {
     const controller = new AbortController();
     this.defaultOptions = {
@@ -30,63 +30,65 @@ export class WebLocks {
     this._init();
   }
 
-  get globalGrantedQueue() {
-    const grantedQueue = window.localStorage.getItem(STORAGE_ITEM_KEY);
-    return grantedQueue ? JSON.parse(window.localStorage.getItem(STORAGE_ITEM_KEY)) : null;
+  get globalRequestQueue() {
+    const requestQueue = window.localStorage.getItem(STORAGE_ITEM_KEY);
+    return requestQueue ? JSON.parse(window.localStorage.getItem(STORAGE_ITEM_KEY)) : [];
   }
 
-  private _addGrantedKey(lockName?: string) {
-    const grantedQueue = this.globalGrantedQueue || [];
+  private _addRequestKey(lockName?: string) {
+    const requestQueue = [...this.globalRequestQueue];
     let key;
     if (lockName) {
       key = `${lockName}${new Date().getTime()}`;
-      grantedQueue.push(key);
-      this.selfGrantedQueue.push(key);
+      requestQueue.push(key);
+      this.selfRequestQueue.push(key);
     }
-    window.localStorage.setItem(STORAGE_ITEM_KEY, JSON.stringify(grantedQueue));
+    if (this.globalRequestQueue.length !== requestQueue.length) {
+      window.localStorage.setItem(STORAGE_ITEM_KEY, JSON.stringify(requestQueue));
+    }
     return key;
   }
 
-  private _deleteFirstGrantedKey(key: string) {
-    const firstKey = this.globalGrantedQueue[0];
+  private _deleteFirstRequestKey(key: string) {
+    const firstKey = this.globalRequestQueue[0];
     if (firstKey) {
       if (firstKey === key) {
-        this._deleteGrantedKey(key);
+        this._deleteRequestKey(key);
       } else {
         throw ('the first key in queue is not equal to the key should be delete!')
       }
     }
   }
 
-  private _deleteSelfGrantedKey(key: string) {
-    const selfQueueIndex = this.selfGrantedQueue.indexOf(key);
+  private _deleteSelfRequestKey(key: string) {
+    const selfQueueIndex = this.selfRequestQueue.indexOf(key);
     if (selfQueueIndex !== -1) {
-      this.selfGrantedQueue.splice(selfQueueIndex, 1);
+      this.selfRequestQueue.splice(selfQueueIndex, 1);
     } else {
-      throw ('could find this key in self granted queue!')
+      throw ('could find this key in self Request queue!')
     }
   }
 
-  private _deleteGlobalGrantedKey(key: string) {
-    const tempQueue = [...this.globalGrantedQueue];
+  private _deleteGlobalRequestKey(key: string) {
+    const tempQueue = [...this.globalRequestQueue];
     const globalQueueIndex = tempQueue.indexOf(key);
     if (globalQueueIndex !== -1) {
       tempQueue.splice(globalQueueIndex, 1);
       window.localStorage.setItem(STORAGE_ITEM_KEY, JSON.stringify(tempQueue));
     } else {
-      throw ('could find this key in global granted queue!')
+      throw ('could find this key in global request queue!')
     }
   }
 
-  private _deleteGrantedKey(key: string) {
-    this._deleteSelfGrantedKey(key);
-    this._deleteGlobalGrantedKey(key);
+  private _deleteRequestKey(key: string) {
+    this._deleteSelfRequestKey(key);
+    this._deleteGlobalRequestKey(key);
   }
 
   private _init() {
     onLocalStorageInit();
-    if (!this.globalGrantedQueue) {
-      this._addGrantedKey();
+    if (!this.globalRequestQueue) {
+      this._addRequestKey();
     }
     this._onUnload();
   }
@@ -103,17 +105,18 @@ export class WebLocks {
       }
       this._options = { ...this.defaultOptions, ...options };
 
-      if (this.globalGrantedQueue && this.globalGrantedQueue.length === 0) {
-        const grantedKeyInQueue = this._addGrantedKey(lockName);
-        await func({ name: lockName, mode: this._options.mode });
-        this._deleteFirstGrantedKey(grantedKeyInQueue);
+      if (this.globalRequestQueue && this.globalRequestQueue.length === 0) {
+        const requestKeyInQueue = this._addRequestKey(lockName);
+        const result = await func({ name: lockName, mode: this._options.mode });
+        this._deleteFirstRequestKey(requestKeyInQueue);
+        resolve(result);
       } else {
-        const grantedKeyInQueue = this._addGrantedKey(lockName);
+        const requestKeyInQueue = this._addRequestKey(lockName);
         const listener = async () => {
-          if (grantedKeyInQueue === this.currentGrantedKey) {
-            await func({ name: lockName, mode: this._options.mode });
-            this._deleteFirstGrantedKey(grantedKeyInQueue);
-            resolve();
+          if (requestKeyInQueue === this.currentRequestKey) {
+            const result = await func({ name: lockName, mode: this._options.mode });
+            this._deleteFirstRequestKey(requestKeyInQueue);
+            resolve(result);
             return true;
           }
           return false;
@@ -123,14 +126,14 @@ export class WebLocks {
     })
   }
 
-  get currentGrantedKey() {
-    return this.globalGrantedQueue[0];
+  get currentRequestKey() {
+    return this.globalRequestQueue[0];
   }
 
   private _onUnload() {
     window.addEventListener('unload', (e) => {
-      this.selfGrantedQueue.forEach(key => {
-        this._deleteGlobalGrantedKey(key);
+      this.selfRequestQueue.forEach(key => {
+        this._deleteGlobalRequestKey(key);
       });
     });
   }
