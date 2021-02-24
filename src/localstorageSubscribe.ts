@@ -1,8 +1,13 @@
+type EventType = Event & {
+    value?: string;
+    key?: string;
+}
+
 export function onLocalStorageInit() {
     const originalSetItem = localStorage.setItem;
 
     localStorage.setItem = function (key, value) {
-        var event = new Event(key);
+        var event: EventType = new Event(key);
 
         event.value = value;
         event.key = key;
