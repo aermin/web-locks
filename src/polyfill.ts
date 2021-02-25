@@ -26,7 +26,6 @@ interface RequestQueueMapType {
 
 const STORAGE_ITEM_KEY = 'requestQueue';
 export class WebLocks {
-  private _options: LockOptions;
   public defaultOptions: LockOptions;
   protected selfRequestQueueMap: RequestQueueMapType = {};
   constructor() {
