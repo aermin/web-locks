@@ -1,24 +1,34 @@
 import { onLocalStorageInit, onStorageChange } from './localStorageSubscribe';
 
-interface Options {
-  mode?: "exclusive" | "shared";
+
+type LockMode = "exclusive" | "shared";
+interface LockOptions {
+  mode?: LockMode;
   ifAvailable?: Boolean;
   steal?: Boolean;
   signal?: AbortSignal;
 }
 
-type LockFnParams = Pick<Options, "mode"> & {
+type Lock = {
+  mode: LockMode;
   name: string;
 };
 
-type LockFn = ({ name, mode }: LockFnParams) => any;
+type LockGrantedCallback = ({ name, mode }: Lock) => Promise<any>;
 
+type LockInfo = Lock & {
+  clientId: string;
+}
+
+interface RequestQueueMapType {
+  [key: string]: LockInfo[];
+}
 
 const STORAGE_ITEM_KEY = 'requestQueue';
 export class WebLocks {
-  private _options: Options;
-  public defaultOptions: Options;
-  selfRequestQueueMap = {};
+  private _options: LockOptions;
+  public defaultOptions: LockOptions;
+  protected selfRequestQueueMap: RequestQueueMapType = {};
   constructor() {
     const controller = new AbortController();
     this.defaultOptions = {
@@ -30,49 +40,55 @@ export class WebLocks {
     this._init();
   }
 
-  get requestQueueMap() {
+  get requestQueueMap(): RequestQueueMapType {
     const requestQueueMap = window.localStorage.getItem(STORAGE_ITEM_KEY);
     return requestQueueMap && JSON.parse(requestQueueMap) || {};
   }
 
-  private _addRequestKey(lockName: string) {
-    const requestQueue = this.requestQueueMap[lockName];
-    const selfRequestQueue = this.selfRequestQueueMap[lockName];
-    let key = `${lockName}${new Date().getTime()}`;
+  private _addRequest(name: string, mode: LockMode) {
+    const requestQueue = this.requestQueueMap[name];
+    const selfRequestQueue = this.selfRequestQueueMap[name];
+    let key = `${name}-${new Date().getTime()}-${String(Math.random()).substring(2)}`;
 
-    this.requestQueueMap[lockName] = requestQueue?.length ? [...requestQueue, key] : [];
-    this.selfRequestQueueMap[lockName] = selfRequestQueue?.length ? [...selfRequestQueue, key] : [];
+    const request = {
+      clientId: key,
+      name,
+      mode
+    };
 
-    if (this.requestQueueMap[lockName].length !== requestQueue?.length) {
+    this.requestQueueMap[name] = requestQueue?.length ? [...requestQueue, request] : [];
+    this.selfRequestQueueMap[name] = selfRequestQueue?.length ? [...selfRequestQueue, request] : [];
+
+    if (this.requestQueueMap[name].length !== requestQueue?.length) {
       window.localStorage.setItem(STORAGE_ITEM_KEY, JSON.stringify(this.requestQueueMap));
     }
 
-    return key;
+    return request;
   }
 
-  private _deleteFirstRequestKey(key: string, lockName: string) {
-    const firstKey = this.requestQueueMap[lockName][0];
+  private _deleteFirstRequestKey(request: LockInfo) {
+    const firstKey = this.requestQueueMap[request.name][0].clientId;
     if (firstKey) {
-      if (firstKey === key) {
-        this._deleteRequestKey(key, lockName);
+      if (firstKey === request.clientId) {
+        this._deleteRequestKey(request);
       } else {
         throw ('the first key in queue is not equal to the key should be delete!')
       }
     }
   }
 
-  private _deleteSelfRequestKey(key: string, lockName: string) {
-    const selfQueueIndex = this.selfRequestQueueMap[lockName].indexOf(key);
+  private _deleteSelfRequest({ name, clientId }: LockInfo) {
+    const selfQueueIndex = this.selfRequestQueueMap[name].findIndex((request) => request.clientId === clientId);
     if (selfQueueIndex !== -1) {
-      this.selfRequestQueueMap[lockName].splice(selfQueueIndex, 1);
+      this.selfRequestQueueMap[name].splice(selfQueueIndex, 1);
     } else {
       throw ('could find this key in self Request queue!')
     }
   }
 
-  private _deleteGlobalRequestKey(key: string, lockName: string) {
-    const requestQueue = this.requestQueueMap[lockName];
-    const globalQueueIndex = requestQueue.indexOf(key);
+  private _deleteGlobalRequest({ name, clientId }: LockInfo) {
+    const requestQueue = this.requestQueueMap[name];
+    const globalQueueIndex = requestQueue.findIndex(request => request.clientId === clientId);
     if (globalQueueIndex !== -1) {
       requestQueue.splice(globalQueueIndex, 1);
       window.localStorage.setItem(STORAGE_ITEM_KEY, JSON.stringify(this.requestQueueMap));
@@ -81,9 +97,9 @@ export class WebLocks {
     }
   }
 
-  private _deleteRequestKey(key: string, lockName: string) {
-    this._deleteSelfRequestKey(key, lockName);
-    this._deleteGlobalRequestKey(key, lockName);
+  private _deleteRequestKey(request: LockInfo) {
+    this._deleteSelfRequest(request);
+    this._deleteGlobalRequest(request);
   }
 
   private _init() {
@@ -91,31 +107,32 @@ export class WebLocks {
     this._onUnload();
   }
 
-  protected async request(lockName: string, options?: Options, fn?: LockFn) {
+  protected async request(name: string, options?: LockOptions, callback?: LockGrantedCallback) {
     return new Promise(async (resolve, reject) => {
-      let func;
-      if (typeof options === "function" && !fn) {
-        func = options;
-      } else if (!options && fn) {
-        func = fn;
+      let cb;
+      if (typeof options === "function" && !callback) {
+        cb = options;
+      } else if (!options && callback) {
+        cb = callback;
       } else {
         throw Error("please input right options");
       }
-      this._options = { ...this.defaultOptions, ...options };
 
-      const requestQueue = this.requestQueueMap[lockName];
+      const _options = { ...this.defaultOptions, ...options };
+
+      const requestQueue = this.requestQueueMap[name];
 
       if (!requestQueue || requestQueue.length === 0) {
-        const requestKeyInQueue = this._addRequestKey(lockName);
-        const result = await func({ name: lockName, mode: this._options.mode });
-        this._deleteFirstRequestKey(requestKeyInQueue, lockName);
+        const request = this._addRequest(name, _options.mode);
+        const result = await cb({ name, mode: _options.mode });
+        this._deleteFirstRequestKey(request);
         resolve(result);
       } else {
-        const requestKeyInQueue = this._addRequestKey(lockName);
+        const _request = this._addRequest(name, _options.mode);
         const listener = async () => {
-          if (requestKeyInQueue === this.currentRequestKey(lockName)) {
-            const result = await func({ name: lockName, mode: this._options.mode });
-            this._deleteFirstRequestKey(requestKeyInQueue, lockName);
+          if (_request.clientId === this.currentRequestKey(name).clientId) {
+            const result = await cb({ name, mode: _options.mode });
+            this._deleteFirstRequestKey(_request);
             resolve(result);
             return true;
           }
@@ -126,18 +143,18 @@ export class WebLocks {
     })
   }
 
-  currentRequestKey(lockName) {
-    return this.requestQueueMap[lockName][0];
+  currentRequestKey(name) {
+    return this.requestQueueMap[name][0];
   }
 
   private _onUnload() {
     window.addEventListener('unload', (e) => {
       const selfRequestQueueMap = this.selfRequestQueueMap;
-      for (const lockName in selfRequestQueueMap) {
-        if (Object.prototype.hasOwnProperty.call(selfRequestQueueMap, lockName)) {
-          const selfRequestQueue = selfRequestQueueMap[lockName];
-          selfRequestQueue.forEach(selfRequestKey => {
-            this._deleteGlobalRequestKey(selfRequestKey, lockName);
+      for (const name in selfRequestQueueMap) {
+        if (Object.prototype.hasOwnProperty.call(selfRequestQueueMap, name)) {
+          const selfRequestQueue = selfRequestQueueMap[name];
+          selfRequestQueue.forEach(request => {
+            this._deleteGlobalRequest(request);
           });
         }
       }
