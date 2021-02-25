@@ -20,14 +20,14 @@ type LockInfo = Lock & {
   clientId: string;
 }
 
-interface RequestQueueMapType {
+interface RequestQueueMap {
   [key: string]: LockInfo[];
 }
 
 const STORAGE_ITEM_KEY = 'requestQueue';
 export class WebLocks {
   public defaultOptions: LockOptions;
-  protected selfRequestQueueMap: RequestQueueMapType = {};
+  protected selfRequestQueueMap: RequestQueueMap = {};
   constructor() {
     const controller = new AbortController();
     this.defaultOptions = {
@@ -39,7 +39,7 @@ export class WebLocks {
     this._init();
   }
 
-  get requestQueueMap(): RequestQueueMapType {
+  get requestQueueMap(): RequestQueueMap {
     const requestQueueMap = window.localStorage.getItem(STORAGE_ITEM_KEY);
     return requestQueueMap && JSON.parse(requestQueueMap) || {};
   }
