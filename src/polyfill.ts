@@ -39,39 +39,39 @@ export class WebLocks {
     this._init();
   }
 
-  get requestQueueMap(): RequestQueueMap {
+  protected get requestQueueMap(): RequestQueueMap {
     const requestQueueMap = window.localStorage.getItem(STORAGE_ITEM_KEY);
     return requestQueueMap && JSON.parse(requestQueueMap) || {};
   }
 
   private _addRequest(name: string, mode: LockMode) {
-    const requestQueue = this.requestQueueMap[name];
-    const selfRequestQueue = this.selfRequestQueueMap[name];
-    let key = `${name}-${new Date().getTime()}-${String(Math.random()).substring(2)}`;
+    const requestQueueMap = this.requestQueueMap;
+    const requestQueue = requestQueueMap[name] || [];
+    const selfRequestQueue = this.selfRequestQueueMap[name] || [];
 
     const request = {
-      clientId: key,
+      clientId: `${name}-${new Date().getTime()}-${String(Math.random()).substring(2)}`,
       name,
       mode
     };
 
-    this.requestQueueMap[name] = requestQueue?.length ? [...requestQueue, request] : [];
-    this.selfRequestQueueMap[name] = selfRequestQueue?.length ? [...selfRequestQueue, request] : [];
+    requestQueueMap[name] = [...requestQueue, request];
+    this.selfRequestQueueMap[name] = [...selfRequestQueue, request];
 
-    if (this.requestQueueMap[name].length !== requestQueue?.length) {
-      window.localStorage.setItem(STORAGE_ITEM_KEY, JSON.stringify(this.requestQueueMap));
+    if (requestQueueMap[name].length !== requestQueue?.length) {
+      window.localStorage.setItem(STORAGE_ITEM_KEY, JSON.stringify(requestQueueMap));
     }
 
     return request;
   }
 
-  private _deleteFirstRequestKey(request: LockInfo) {
-    const firstKey = this.requestQueueMap[request.name][0].clientId;
-    if (firstKey) {
-      if (firstKey === request.clientId) {
-        this._deleteRequestKey(request);
+  private _deleteFirstRequest(request: LockInfo) {
+    const clientId = this.requestQueueMap[request.name][0].clientId;
+    if (clientId) {
+      if (clientId === request.clientId) {
+        this._deleteRequest(request);
       } else {
-        throw ('the first key in queue is not equal to the key should be delete!')
+        throw (`first request in queue is not found or not correct which should be ${request}!`);
       }
     }
   }
@@ -81,22 +81,23 @@ export class WebLocks {
     if (selfQueueIndex !== -1) {
       this.selfRequestQueueMap[name].splice(selfQueueIndex, 1);
     } else {
-      throw ('could find this key in self Request queue!')
+      throw (`first request in self Request queue is not found or not correct which clientId should be ${clientId}!`);
     }
   }
 
   private _deleteGlobalRequest({ name, clientId }: LockInfo) {
-    const requestQueue = this.requestQueueMap[name];
+    const requestQueueMap = this.requestQueueMap;
+    const requestQueue = requestQueueMap[name];
     const globalQueueIndex = requestQueue.findIndex(request => request.clientId === clientId);
     if (globalQueueIndex !== -1) {
       requestQueue.splice(globalQueueIndex, 1);
-      window.localStorage.setItem(STORAGE_ITEM_KEY, JSON.stringify(this.requestQueueMap));
+      window.localStorage.setItem(STORAGE_ITEM_KEY, JSON.stringify(requestQueueMap));
     } else {
-      throw ('could find this key in global request queue!')
+      throw (`first request in global Request queue is not found or not correct which clientId should be ${clientId}!`);
     }
   }
 
-  private _deleteRequestKey(request: LockInfo) {
+  private _deleteRequest(request: LockInfo) {
     this._deleteSelfRequest(request);
     this._deleteGlobalRequest(request);
   }
@@ -106,7 +107,7 @@ export class WebLocks {
     this._onUnload();
   }
 
-  protected async request(name: string, options?: LockOptions, callback?: LockGrantedCallback) {
+  public async request(name: string, options?: LockOptions, callback?: LockGrantedCallback) {
     return new Promise(async (resolve, reject) => {
       let cb;
       if (typeof options === "function" && !callback) {
@@ -124,14 +125,14 @@ export class WebLocks {
       if (!requestQueue || requestQueue.length === 0) {
         const request = this._addRequest(name, _options.mode);
         const result = await cb({ name, mode: _options.mode });
-        this._deleteFirstRequestKey(request);
+        this._deleteFirstRequest(request);
         resolve(result);
       } else {
         const _request = this._addRequest(name, _options.mode);
         const listener = async () => {
-          if (_request.clientId === this.currentRequestKey(name).clientId) {
+          if (_request.clientId === this._getCurrentRequest(name).clientId) {
             const result = await cb({ name, mode: _options.mode });
-            this._deleteFirstRequestKey(_request);
+            this._deleteFirstRequest(_request);
             resolve(result);
             return true;
           }
@@ -142,7 +143,7 @@ export class WebLocks {
     })
   }
 
-  currentRequestKey(name) {
+  private _getCurrentRequest(name) {
     return this.requestQueueMap[name][0];
   }
 
