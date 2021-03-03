@@ -24,6 +24,11 @@ interface RequestQueueMap {
   [key: string]: LockInfo[];
 }
 
+interface Query {
+  held: LockInfo[],
+  pending: LockInfo[],
+}
+
 const STORAGE_ITEM_KEY = 'requestQueue';
 export class WebLocks {
   public defaultOptions: LockOptions;
@@ -141,6 +146,22 @@ export class WebLocks {
         onStorageChange(STORAGE_ITEM_KEY, listener);
       }
     })
+  }
+
+  public query() {
+    const requestQueueMap = this.requestQueueMap;
+    const queryResult: Query = {
+      held: [],
+      pending: [],
+    }
+    for (const name in requestQueueMap) {
+      if (Object.prototype.hasOwnProperty.call(requestQueueMap, name)) {
+        const [firstRequest, ...restRequest] = requestQueueMap[name];
+        firstRequest && queryResult.held.push(firstRequest);
+        queryResult.pending = queryResult.pending.concat(restRequest);
+      }
+    }
+    return queryResult;
   }
 
   private _getCurrentRequest(name) {
