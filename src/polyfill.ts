@@ -24,6 +24,11 @@ interface RequestQueueMap {
   [key: string]: LockInfo[];
 }
 
+interface Query {
+  held: LockInfo[],
+  pending: LockInfo[],
+}
+
 const STORAGE_ITEM_KEY = 'requestQueue';
 export class WebLocks {
   public defaultOptions: LockOptions;
@@ -39,6 +44,8 @@ export class WebLocks {
     this._init();
   }
 
+  private _clientId: string;
+
   protected get requestQueueMap(): RequestQueueMap {
     const requestQueueMap = window.localStorage.getItem(STORAGE_ITEM_KEY);
     return requestQueueMap && JSON.parse(requestQueueMap) || {};
@@ -50,7 +57,7 @@ export class WebLocks {
     const selfRequestQueue = this.selfRequestQueueMap[name] || [];
 
     const request = {
-      clientId: `${name}-${new Date().getTime()}-${String(Math.random()).substring(2)}`,
+      clientId: this._clientId,
       name,
       mode
     };
@@ -103,6 +110,7 @@ export class WebLocks {
   }
 
   private _init() {
+    this._clientId = `${new Date().getTime()}-${String(Math.random()).substring(2)}`;
     onLocalStorageInit();
     this._onUnload();
   }
@@ -141,6 +149,20 @@ export class WebLocks {
         onStorageChange(STORAGE_ITEM_KEY, listener);
       }
     })
+  }
+
+  public query() {
+    const requestQueueMap = this.requestQueueMap;
+    const queryResult: Query = {
+      held: [],
+      pending: [],
+    }
+    for (const name in requestQueueMap) {
+      const [firstRequest, ...restRequest] = requestQueueMap[name];
+      firstRequest && queryResult.held.push(firstRequest);
+      queryResult.pending = queryResult.pending.concat(restRequest);
+    }
+    return queryResult;
   }
 
   private _getCurrentRequest(name) {
