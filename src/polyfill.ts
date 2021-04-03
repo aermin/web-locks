@@ -70,16 +70,12 @@ export class WebLocks {
   }
 
   // delete old held lock and add move first request Lock to held lock set
-  private _updateHeldLockSetAndRequestLockQueueMap(
-    { uuid, name }: LockInfo,
-    heldLockSet = this._heldLockSet,
-    requestLockQueueMap = this._requestLockQueueMap
-  ) {
-    const heldLockIndex = heldLockSet.findIndex(
-      (request) => request.uuid === uuid
-    );
+  private _updateHeldLockSetAndRequestLockQueueMap({ uuid, name }: LockInfo) {
+    const heldLockSet = this._heldLockSet;
+    const heldLockIndex = heldLockSet.findIndex((lock) => lock.uuid === uuid);
     if (heldLockIndex !== -1) {
       heldLockSet.splice(heldLockIndex, 1);
+      const requestLockQueueMap = this._requestLockQueueMap;
       const requestLockQueue = requestLockQueueMap[name] || [];
       const [firstRequestLock, ...restRequestLocks] = requestLockQueue;
       if (firstRequestLock) {
@@ -205,7 +201,18 @@ export class WebLocks {
       ) {
         heldLockWIP = true;
         const result = await cb({ name, mode: request.mode });
-        this._updateHeldLockSetAndRequestLockQueueMap(request);
+        if (request.mode === LOCK_MODE.EXCLUSIVE) {
+          this._updateHeldLockSetAndRequestLockQueueMap(request);
+        } else if (request.mode === LOCK_MODE.SHARED) {
+          // have other unreleased shared held lock for this source, then do nothing, else push new request lock as held lock
+          const existOtherUnreleasedSharedHeldLock = this._heldLockSet.some(
+            (lock) =>
+              lock.name === request.name && lock.mode === LOCK_MODE.SHARED
+          );
+          if (!existOtherUnreleasedSharedHeldLock) {
+            this._updateHeldLockSetAndRequestLockQueueMap(request);
+          }
+        }
         resolve(result);
         return true;
       }
@@ -240,25 +247,34 @@ export class WebLocks {
       }
 
       let heldLockSet = this._heldLockSet;
-      
 
       heldLockSet = [...heldLockSet].reduce((pre, cur) => {
-        if (cur.clientId !== this._clientId) {
-          pre.push(cur);
+        if (cur.clientId === this._clientId) {
           if (cur.mode === LOCK_MODE.EXCLUSIVE) {
-            this._updateHeldLockSetAndRequestLockQueueMap(
-              cur,
-              heldLockSet,
-              requestLockQueueMap
-            );
+            const requestLockQueue = requestLockQueueMap[cur.name] || [];
+            const [firstRequestLock, ...restRequestLocks] = requestLockQueue;
+            if (firstRequestLock) {
+              pre.push(firstRequestLock);
+              requestLockQueueMap[cur.name] = restRequestLocks;
+            }
           } else if (cur.mode === LOCK_MODE.SHARED) {
-
+            const existOtherUnreleasedSharedHeldLock = heldLockSet.some(
+              (lock) => lock.name === cur.name && lock.mode === LOCK_MODE.SHARED
+            );
+            if (!existOtherUnreleasedSharedHeldLock) {
+              const requestLockQueue = requestLockQueueMap[cur.name] || [];
+              const [firstRequestLock, ...restRequestLocks] = requestLockQueue;
+              if (firstRequestLock) {
+                pre.push(firstRequestLock);
+                requestLockQueueMap[cur.name] = restRequestLocks;
+              }
+            }
           }
+        } else {
+          pre.push(cur);
         }
         return pre;
       }, []);
-
-      newHeldLockSet;
 
       window.localStorage.setItem(
         STORAGE_KEYS.HELD_LOCK_SET,
@@ -268,14 +284,6 @@ export class WebLocks {
         STORAGE_KEYS.REQUEST_QUEUE_MAP,
         JSON.stringify(requestLockQueueMap)
       );
-      return firstRequestLock;
-      // const selfRequestQueueMap = this._selfRequestQueueMap;
-      // for (const name in selfRequestQueueMap) {
-      //   const selfRequestQueue = selfRequestQueueMap[name];
-      //   selfRequestQueue.forEach((request) => {
-      //     this._deleteGlobalRequest(request);
-      //   });
-      // }
     });
   }
 }
