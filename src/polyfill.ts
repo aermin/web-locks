@@ -136,9 +136,9 @@ export class WebLocks {
   ) {
     return new Promise(async (resolve, reject) => {
       let cb;
-      if (typeof options === "function" && !callback) {
+      if (options.constructor.name === "Function" && !callback) {
         cb = options;
-      } else if (!options && callback) {
+      } else if (options.constructor.name === "Object" && callback) {
         cb = callback;
       } else {
         throw Error("please input right options");
