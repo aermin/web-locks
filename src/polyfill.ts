@@ -70,24 +70,38 @@ export class WebLocks {
 
   // delete old held lock and add move first request Lock to held lock set
   private _updateHeldLockSetAndRequestLockQueueMap({ uuid, name }: LockInfo) {
-    const heldLockSet = this._heldLockSet;
+    let heldLockSet = this._heldLockSet;
     const heldLockIndex = heldLockSet.findIndex((lock) => lock.uuid === uuid);
     if (heldLockIndex !== -1) {
       heldLockSet.splice(heldLockIndex, 1);
       const requestLockQueueMap = this._requestLockQueueMap;
       const requestLockQueue = requestLockQueueMap[name] || [];
       const [firstRequestLock, ...restRequestLocks] = requestLockQueue;
+      console.log("firstRequestLock===", firstRequestLock);
       if (firstRequestLock) {
-        heldLockSet.push(firstRequestLock);
+        if (firstRequestLock.mode === LOCK_MODE.SHARED) {
+          const sharedRequestLocks = requestLockQueue.filter(
+            (lock) => lock.mode === LOCK_MODE.SHARED
+          );
+          const exclusiveRequestLocks = requestLockQueue.filter(
+            (lock) => lock.mode === LOCK_MODE.EXCLUSIVE
+          );
+          heldLockSet = [...heldLockSet, ...sharedRequestLocks];
+          requestLockQueueMap[name] = exclusiveRequestLocks;
+        } else if (firstRequestLock.mode === LOCK_MODE.EXCLUSIVE) {
+          heldLockSet.push(firstRequestLock);
+          requestLockQueueMap[name] = restRequestLocks;
+        }
+
         window.localStorage.setItem(
           STORAGE_KEYS.HELD_LOCK_SET,
           JSON.stringify(heldLockSet)
         );
-        requestLockQueueMap[name] = restRequestLocks;
         window.localStorage.setItem(
           STORAGE_KEYS.REQUEST_QUEUE_MAP,
           JSON.stringify(requestLockQueueMap)
         );
+
         return firstRequestLock;
       } else {
         window.localStorage.setItem(
@@ -209,6 +223,7 @@ export class WebLocks {
             (lock) =>
               lock.name === request.name && lock.mode === LOCK_MODE.SHARED
           );
+          console.log('existOtherUnreleasedSharedHeldLock===', existOtherUnreleasedSharedHeldLock)
           if (existOtherUnreleasedSharedHeldLock) {
             // just delete this held lock
             const heldLockIndex = heldLockSet.findIndex(
