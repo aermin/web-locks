@@ -77,7 +77,6 @@ export class WebLocks {
       const requestLockQueueMap = this._requestLockQueueMap;
       const requestLockQueue = requestLockQueueMap[name] || [];
       const [firstRequestLock, ...restRequestLocks] = requestLockQueue;
-      console.log("firstRequestLock===", firstRequestLock);
       if (firstRequestLock) {
         if (firstRequestLock.mode === LOCK_MODE.SHARED) {
           const sharedRequestLocks = requestLockQueue.filter(
@@ -223,7 +222,10 @@ export class WebLocks {
             (lock) =>
               lock.name === request.name && lock.mode === LOCK_MODE.SHARED
           );
-          console.log('existOtherUnreleasedSharedHeldLock===', existOtherUnreleasedSharedHeldLock)
+          console.log(
+            "existOtherUnreleasedSharedHeldLock===",
+            existOtherUnreleasedSharedHeldLock
+          );
           if (existOtherUnreleasedSharedHeldLock) {
             // just delete this held lock
             const heldLockIndex = heldLockSet.findIndex(
@@ -237,6 +239,32 @@ export class WebLocks {
               );
             } else {
               throw "this held lock should exist but could not be found!";
+            }
+
+            // there is a issue when the shared locks release at the same time,
+            // existOtherUnreleasedSharedHeldLock will be true, then could not move request lock to held lock set
+            let latestHeldLockSet = this._heldLockSet;
+            const test = latestHeldLockSet.some(
+              (lock) => lock.name === request.name
+            );
+            console.log("test====", test);
+            if (!test) {
+              const requestLockQueueMap = this._requestLockQueueMap;
+              const requestLockQueue = requestLockQueueMap[name] || [];
+              const [firstRequestLock, ...restRequestLocks] = requestLockQueue;
+              console.log('firstRequestLock===', firstRequestLock);
+              if (firstRequestLock) {
+                latestHeldLockSet.push(firstRequestLock);
+                requestLockQueueMap[name] = restRequestLocks;
+                window.localStorage.setItem(
+                  STORAGE_KEYS.HELD_LOCK_SET,
+                  JSON.stringify(latestHeldLockSet)
+                );
+                window.localStorage.setItem(
+                  STORAGE_KEYS.REQUEST_QUEUE_MAP,
+                  JSON.stringify(requestLockQueueMap)
+                );
+              }
             }
           } else {
             this._updateHeldLockSetAndRequestLockQueueMap(request);
