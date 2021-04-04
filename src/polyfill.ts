@@ -43,7 +43,6 @@ interface LockManagerSnapshot {
 
 export class WebLocks {
   public defaultOptions: LockOptions;
-  private _selfRequestQueueMap: RequestQueueMap = {};
   private _clientId: string;
 
   constructor() {
@@ -90,6 +89,11 @@ export class WebLocks {
           JSON.stringify(requestLockQueueMap)
         );
         return firstRequestLock;
+      } else {
+        window.localStorage.setItem(
+          STORAGE_KEYS.HELD_LOCK_SET,
+          JSON.stringify(heldLockSet)
+        );
       }
     } else {
       throw `could not find this held lock by uuid: ${uuid}!`;
@@ -106,11 +110,8 @@ export class WebLocks {
 
   private _pushToLockRequestQueueMap(request) {
     const requestQueueMap = this._requestLockQueueMap;
-    const requestQueue = requestQueueMap[name] || [];
-    const selfRequestQueue = this._selfRequestQueueMap[name] || [];
-
-    requestQueueMap[name] = [...requestQueue, request];
-    this._selfRequestQueueMap[name] = [...selfRequestQueue, request];
+    const requestQueue = requestQueueMap[request.name] || [];
+    requestQueueMap[request.name] = [...requestQueue, request];
 
     window.localStorage.setItem(
       STORAGE_KEYS.REQUEST_QUEUE_MAP,
@@ -160,36 +161,34 @@ export class WebLocks {
 
       if (heldLock) {
         if (heldLock.mode === LOCK_MODE.EXCLUSIVE) {
-          this._handleNewLockRequest(request, cb, name, resolve);
+          this._handleNewLockRequest(request, cb, resolve);
         } else if (heldLock.mode === LOCK_MODE.SHARED) {
           if (request.mode === LOCK_MODE.SHARED) {
-            await this._handleNewHeldLock(request, cb, name, resolve);
+            await this._handleNewHeldLock(request, cb, resolve);
           } else if (request.mode === LOCK_MODE.EXCLUSIVE) {
-            this._handleNewLockRequest(request, cb, name, resolve);
+            this._handleNewLockRequest(request, cb, resolve);
           }
         }
       } else {
-        await this._handleNewHeldLock(request, cb, name, resolve);
+        await this._handleNewHeldLock(request, cb, resolve);
       }
     });
   }
 
   private async _handleNewHeldLock(
-    request: { name: string; mode: LockMode; clientId: string; uuid: string },
+    request: LockInfo,
     cb: any,
-    name: string,
     resolve: (value?: unknown) => void
   ) {
     this._pushToHeldLockSet(request);
-    const result = await cb({ name, mode: request.mode });
+    const result = await cb({ name: request.name, mode: request.mode });
     this._updateHeldLockSetAndRequestLockQueueMap(request);
     resolve(result);
   }
 
   private _handleNewLockRequest(
-    request: { name: string; mode: LockMode; clientId: string; uuid: string },
+    request: LockInfo,
     cb: any,
-    name: string,
     resolve: (value?: unknown) => void
   ) {
     this._pushToLockRequestQueueMap(request);
@@ -200,16 +199,31 @@ export class WebLocks {
         this._heldLockSet.some((e) => e.uuid === request.uuid)
       ) {
         heldLockWIP = true;
-        const result = await cb({ name, mode: request.mode });
+        const result = await cb({ name: request.name, mode: request.mode });
         if (request.mode === LOCK_MODE.EXCLUSIVE) {
           this._updateHeldLockSetAndRequestLockQueueMap(request);
         } else if (request.mode === LOCK_MODE.SHARED) {
-          // have other unreleased shared held lock for this source, then do nothing, else push new request lock as held lock
-          const existOtherUnreleasedSharedHeldLock = this._heldLockSet.some(
+          const heldLockSet = this._heldLockSet;
+          // have other unreleased shared held lock for this source, just delete this held lock, else also need to push new request lock as held lock
+          const existOtherUnreleasedSharedHeldLock = heldLockSet.some(
             (lock) =>
               lock.name === request.name && lock.mode === LOCK_MODE.SHARED
           );
-          if (!existOtherUnreleasedSharedHeldLock) {
+          if (existOtherUnreleasedSharedHeldLock) {
+            // just delete this held lock
+            const heldLockIndex = heldLockSet.findIndex(
+              (lock) => lock.uuid === request.uuid
+            );
+            if (heldLockIndex !== -1) {
+              heldLockSet.splice(heldLockIndex, 1);
+              window.localStorage.setItem(
+                STORAGE_KEYS.HELD_LOCK_SET,
+                JSON.stringify(heldLockSet)
+              );
+            } else {
+              throw "this held lock should exist but could not be found!";
+            }
+          } else {
             this._updateHeldLockSetAndRequestLockQueueMap(request);
           }
         }
@@ -248,7 +262,7 @@ export class WebLocks {
 
       let heldLockSet = this._heldLockSet;
 
-      heldLockSet = [...heldLockSet].reduce((pre, cur) => {
+      heldLockSet = heldLockSet.reduce((pre, cur) => {
         if (cur.clientId === this._clientId) {
           if (cur.mode === LOCK_MODE.EXCLUSIVE) {
             const requestLockQueue = requestLockQueueMap[cur.name] || [];
