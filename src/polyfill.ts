@@ -92,21 +92,12 @@ export class WebLocks {
           requestLockQueueMap[name] = restRequestLocks;
         }
 
-        window.localStorage.setItem(
-          STORAGE_KEYS.HELD_LOCK_SET,
-          JSON.stringify(heldLockSet)
-        );
-        window.localStorage.setItem(
-          STORAGE_KEYS.REQUEST_QUEUE_MAP,
-          JSON.stringify(requestLockQueueMap)
-        );
+        this._storeHeldLockSet(heldLockSet);
+        this._storeRequestLockQueueMap(requestLockQueueMap);
 
         return firstRequestLock;
       } else {
-        window.localStorage.setItem(
-          STORAGE_KEYS.HELD_LOCK_SET,
-          JSON.stringify(heldLockSet)
-        );
+        this._storeHeldLockSet(heldLockSet);
       }
     } else {
       throw `could not find this held lock by uuid: ${uuid}!`;
@@ -126,19 +117,13 @@ export class WebLocks {
     const requestQueue = requestQueueMap[request.name] || [];
     requestQueueMap[request.name] = [...requestQueue, request];
 
-    window.localStorage.setItem(
-      STORAGE_KEYS.REQUEST_QUEUE_MAP,
-      JSON.stringify(requestQueueMap)
-    );
+    this._storeRequestLockQueueMap(requestQueueMap);
     return request;
   }
 
   private _pushToHeldLockSet(request) {
-    const _heldLockSet = [...this._heldLockSet, request];
-    window.localStorage.setItem(
-      STORAGE_KEYS.HELD_LOCK_SET,
-      JSON.stringify(_heldLockSet)
-    );
+    const heldLockSet = [...this._heldLockSet, request];
+    this._storeHeldLockSet(heldLockSet);
     return request;
   }
 
@@ -199,6 +184,20 @@ export class WebLocks {
     resolve(result);
   }
 
+  private _storeHeldLockSet(heldLockSet: LocksInfo) {
+    window.localStorage.setItem(
+      STORAGE_KEYS.HELD_LOCK_SET,
+      JSON.stringify(heldLockSet)
+    );
+  }
+
+  private _storeRequestLockQueueMap(requestLockQueueMap: RequestQueueMap) {
+    window.localStorage.setItem(
+      STORAGE_KEYS.REQUEST_QUEUE_MAP,
+      JSON.stringify(requestLockQueueMap)
+    );
+  }
+
   private _handleNewLockRequest(
     request: LockInfo,
     cb: any,
@@ -222,7 +221,6 @@ export class WebLocks {
             (lock) =>
               lock.name === request.name && lock.mode === LOCK_MODE.SHARED
           );
-          console.log('existOtherUnreleasedSharedHeldLock===', existOtherUnreleasedSharedHeldLock)
           // there is a issue when the shared locks release at the same time,
           // existOtherUnreleasedSharedHeldLock will be true, then could not move request lock to held lock set
           if (existOtherUnreleasedSharedHeldLock) {
@@ -232,12 +230,23 @@ export class WebLocks {
             );
             if (heldLockIndex !== -1) {
               heldLockSet.splice(heldLockIndex, 1);
-              window.localStorage.setItem(
-                STORAGE_KEYS.HELD_LOCK_SET,
-                JSON.stringify(heldLockSet)
-              );
+              this._storeHeldLockSet(heldLockSet);
             } else {
               throw "this held lock should exist but could not be found!";
+            }
+
+            // handle above issue when the shared locks release at the same time
+            let latestHeldLockSet = this._heldLockSet;
+            if (!latestHeldLockSet.some((lock) => lock.name === request.name)) {
+              const requestLockQueueMap = this._requestLockQueueMap;
+              const requestLockQueue = requestLockQueueMap[request.name] || [];
+              const [firstRequestLock, ...restRequestLocks] = requestLockQueue;
+              if (firstRequestLock) {
+                latestHeldLockSet.push(firstRequestLock);
+                requestLockQueueMap[name] = restRequestLocks;
+                this._storeHeldLockSet(latestHeldLockSet);
+                this._storeRequestLockQueueMap(requestLockQueueMap);
+              }
             }
           } else {
             this._updateHeldLockSetAndRequestLockQueueMap(request);
@@ -306,14 +315,8 @@ export class WebLocks {
         return pre;
       }, []);
 
-      window.localStorage.setItem(
-        STORAGE_KEYS.HELD_LOCK_SET,
-        JSON.stringify(heldLockSet)
-      );
-      window.localStorage.setItem(
-        STORAGE_KEYS.REQUEST_QUEUE_MAP,
-        JSON.stringify(requestLockQueueMap)
-      );
+      this._storeHeldLockSet(heldLockSet);
+      this._storeRequestLockQueueMap(requestLockQueueMap);
     });
   }
 }
