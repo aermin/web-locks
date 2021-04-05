@@ -69,38 +69,46 @@ export class WebLocks {
   }
 
   // delete old held lock and add move first request Lock to held lock set
-  private _updateHeldLockSetAndRequestLockQueueMap({ uuid, name }: LockInfo) {
+  private _updateHeldLockSetAndRequestLockQueueMap(request: LockInfo) {
     let heldLockSet = this._heldLockSet;
-    const heldLockIndex = heldLockSet.findIndex((lock) => lock.uuid === uuid);
+    const heldLockIndex = heldLockSet.findIndex(
+      (lock) => lock.uuid === request.uuid
+    );
     if (heldLockIndex !== -1) {
       heldLockSet.splice(heldLockIndex, 1);
       const requestLockQueueMap = this._requestLockQueueMap;
-      const requestLockQueue = requestLockQueueMap[name] || [];
+      const requestLockQueue = requestLockQueueMap[request.name] || [];
       const [firstRequestLock, ...restRequestLocks] = requestLockQueue;
       if (firstRequestLock) {
-        if (firstRequestLock.mode === LOCK_MODE.SHARED) {
-          const sharedRequestLocks = requestLockQueue.filter(
-            (lock) => lock.mode === LOCK_MODE.SHARED
-          );
-          const exclusiveRequestLocks = requestLockQueue.filter(
-            (lock) => lock.mode === LOCK_MODE.EXCLUSIVE
-          );
-          heldLockSet = [...heldLockSet, ...sharedRequestLocks];
-          requestLockQueueMap[name] = exclusiveRequestLocks;
-        } else if (firstRequestLock.mode === LOCK_MODE.EXCLUSIVE) {
+        if (
+          firstRequestLock.mode === LOCK_MODE.EXCLUSIVE ||
+          restRequestLocks.length === 0
+        ) {
           heldLockSet.push(firstRequestLock);
-          requestLockQueueMap[name] = restRequestLocks;
+          requestLockQueueMap[request.name] = restRequestLocks;
+        } else if (firstRequestLock.mode === LOCK_MODE.SHARED) {
+          const nonSharedLockIndex = requestLockQueue.findIndex(
+            (lock) => lock.mode !== LOCK_MODE.SHARED
+          );
+          heldLockSet = [
+            ...heldLockSet,
+            ...requestLockQueue.splice(0, nonSharedLockIndex),
+          ];
+
+          requestLockQueueMap[request.name] = requestLockQueue;
         }
 
-        this._storeHeldLockSet(heldLockSet);
-        this._storeRequestLockQueueMap(requestLockQueueMap);
+        this._storeHeldLockSetAndRequestLockQueueMap(
+          heldLockSet,
+          requestLockQueueMap
+        );
 
         return firstRequestLock;
       } else {
         this._storeHeldLockSet(heldLockSet);
       }
     } else {
-      throw `could not find this held lock by uuid: ${uuid}!`;
+      throw `could not find this held lock by uuid: ${request.uuid}!`;
     }
   }
 
@@ -161,9 +169,15 @@ export class WebLocks {
         if (heldLock.mode === LOCK_MODE.EXCLUSIVE) {
           this._handleNewLockRequest(request, cb, resolve);
         } else if (heldLock.mode === LOCK_MODE.SHARED) {
-          if (request.mode === LOCK_MODE.SHARED) {
+          // if this request lock is shared lock and is first request lock of this queue, then push held locks set
+          const requestLockQueue =
+            this._requestLockQueueMap[request.name] || [];
+          if (
+            request.mode === LOCK_MODE.SHARED &&
+            requestLockQueue.length === 0
+          ) {
             await this._handleNewHeldLock(request, cb, resolve);
-          } else if (request.mode === LOCK_MODE.EXCLUSIVE) {
+          } else {
             this._handleNewLockRequest(request, cb, resolve);
           }
         }
@@ -239,13 +253,15 @@ export class WebLocks {
             let latestHeldLockSet = this._heldLockSet;
             if (!latestHeldLockSet.some((lock) => lock.name === request.name)) {
               const requestLockQueueMap = this._requestLockQueueMap;
-              const requestLockQueue = requestLockQueueMap[request.name] || [];
-              const [firstRequestLock, ...restRequestLocks] = requestLockQueue;
+              const [firstRequestLock, ...restRequestLocks] =
+                requestLockQueueMap[request.name] || [];
               if (firstRequestLock) {
                 latestHeldLockSet.push(firstRequestLock);
-                requestLockQueueMap[name] = restRequestLocks;
-                this._storeHeldLockSet(latestHeldLockSet);
-                this._storeRequestLockQueueMap(requestLockQueueMap);
+                requestLockQueueMap[request.name] = restRequestLocks;
+                this._storeHeldLockSetAndRequestLockQueueMap(
+                  latestHeldLockSet,
+                  requestLockQueueMap
+                );
               }
             }
           } else {
@@ -258,6 +274,14 @@ export class WebLocks {
       return false;
     };
     onStorageChange(STORAGE_KEYS.HELD_LOCK_SET, listener);
+  }
+
+  private _storeHeldLockSetAndRequestLockQueueMap(
+    heldLockSet: LocksInfo,
+    requestLockQueueMap: RequestQueueMap
+  ) {
+    this._storeHeldLockSet(heldLockSet);
+    this._storeRequestLockQueueMap(requestLockQueueMap);
   }
 
   public query() {
@@ -286,37 +310,45 @@ export class WebLocks {
       }
 
       let heldLockSet = this._heldLockSet;
+      let removedHeldLockSet = [];
 
       heldLockSet = heldLockSet.reduce((pre, cur) => {
-        if (cur.clientId === this._clientId) {
-          if (cur.mode === LOCK_MODE.EXCLUSIVE) {
-            const requestLockQueue = requestLockQueueMap[cur.name] || [];
-            const [firstRequestLock, ...restRequestLocks] = requestLockQueue;
-            if (firstRequestLock) {
-              pre.push(firstRequestLock);
-              requestLockQueueMap[cur.name] = restRequestLocks;
-            }
-          } else if (cur.mode === LOCK_MODE.SHARED) {
-            const existOtherUnreleasedSharedHeldLock = heldLockSet.some(
-              (lock) => lock.name === cur.name && lock.mode === LOCK_MODE.SHARED
-            );
-            if (!existOtherUnreleasedSharedHeldLock) {
-              const requestLockQueue = requestLockQueueMap[cur.name] || [];
-              const [firstRequestLock, ...restRequestLocks] = requestLockQueue;
-              if (firstRequestLock) {
-                pre.push(firstRequestLock);
-                requestLockQueueMap[cur.name] = restRequestLocks;
-              }
-            }
-          }
-        } else {
+        if (cur.clientId !== this._clientId) {
           pre.push(cur);
+        } else {
+          removedHeldLockSet.push(cur);
         }
         return pre;
       }, []);
 
-      this._storeHeldLockSet(heldLockSet);
-      this._storeRequestLockQueueMap(requestLockQueueMap);
+      removedHeldLockSet.forEach((lock) => {
+        const requestLockQueue = requestLockQueueMap[lock.name];
+        const [firstRequestLock, ...restRequestLocks] = requestLockQueue;
+        if (firstRequestLock) {
+          if (
+            firstRequestLock.mode === LOCK_MODE.EXCLUSIVE ||
+            restRequestLocks.length === 0
+          ) {
+            heldLockSet.push(firstRequestLock);
+            requestLockQueueMap[lock.name] = restRequestLocks;
+          } else if (firstRequestLock.mode === LOCK_MODE.SHARED) {
+            const nonSharedLockIndex = requestLockQueue.findIndex(
+              (lock) => lock.mode !== LOCK_MODE.SHARED
+            );
+            heldLockSet = [
+              ...heldLockSet,
+              ...requestLockQueue.splice(0, nonSharedLockIndex),
+            ];
+
+            requestLockQueueMap[lock.name] = requestLockQueue;
+          }
+        }
+      });
+
+      this._storeHeldLockSetAndRequestLockQueueMap(
+        heldLockSet,
+        requestLockQueueMap
+      );
     });
   }
 }
