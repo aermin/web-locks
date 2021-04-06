@@ -140,17 +140,22 @@ export class WebLocks {
     options?: LockOptions,
     callback?: LockGrantedCallback
   ) {
-    return new Promise(async (resolve, reject) => {
+    return new Promise((resolve, reject) => {
       let cb;
-      if (options.constructor.name === "Function" && !callback) {
+      let _options: LockOptions = {};
+      if (
+        (options.constructor.name === "Function" ||
+          options.constructor.name === "AsyncFunction") &&
+        !callback
+      ) {
         cb = options;
+        _options = this.defaultOptions;
       } else if (options.constructor.name === "Object" && callback) {
         cb = callback;
+        _options = { ...this.defaultOptions, ...options };
       } else {
         throw Error("please input right options");
       }
-
-      const _options = { ...this.defaultOptions, ...options };
 
       const request = {
         name,
@@ -164,7 +169,6 @@ export class WebLocks {
       const heldLock = this._heldLockSet.find((e) => {
         return e.name === name;
       });
-
       if (heldLock) {
         if (heldLock.mode === LOCK_MODE.EXCLUSIVE) {
           this._handleNewLockRequest(request, cb, resolve);
@@ -176,13 +180,13 @@ export class WebLocks {
             request.mode === LOCK_MODE.SHARED &&
             requestLockQueue.length === 0
           ) {
-            await this._handleNewHeldLock(request, cb, resolve);
+            this._handleNewHeldLock(request, cb, resolve);
           } else {
             this._handleNewLockRequest(request, cb, resolve);
           }
         }
       } else {
-        await this._handleNewHeldLock(request, cb, resolve);
+        this._handleNewHeldLock(request, cb, resolve);
       }
     });
   }
