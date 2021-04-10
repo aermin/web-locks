@@ -1,7 +1,16 @@
-import { onLocalStorageInit, onStorageChange } from './localStorageSubscribe';
+import { onLocalStorageInit, onStorageChange } from "./localStorageSubscribe";
 
+const LOCK_MODE = {
+  EXCLUSIVE: "exclusive",
+  SHARED: "shared",
+} as const;
 
-type LockMode = "exclusive" | "shared";
+const STORAGE_KEYS = {
+  REQUEST_QUEUE_MAP: "requestQueueMap",
+  HELD_LOCK_SET: "heldLockSet",
+};
+
+type LockMode = typeof LOCK_MODE[keyof typeof LOCK_MODE];
 interface LockOptions {
   mode?: LockMode;
   ifAvailable?: Boolean;
@@ -18,168 +27,332 @@ type LockGrantedCallback = ({ name, mode }: Lock) => Promise<any>;
 
 type LockInfo = Lock & {
   clientId: string;
-}
+  uuid: string;
+};
+
+type LocksInfo = LockInfo[];
 
 interface RequestQueueMap {
-  [key: string]: LockInfo[];
+  [key: string]: LocksInfo;
 }
 
-interface Query {
-  held: LockInfo[],
-  pending: LockInfo[],
+interface LockManagerSnapshot {
+  held: LocksInfo;
+  pending: LocksInfo;
 }
 
-const STORAGE_ITEM_KEY = 'requestQueue';
 export class WebLocks {
   public defaultOptions: LockOptions;
-  protected selfRequestQueueMap: RequestQueueMap = {};
+  private _clientId: string;
+
   constructor() {
     const controller = new AbortController();
     this.defaultOptions = {
-      mode: "exclusive",
+      mode: LOCK_MODE.EXCLUSIVE,
       ifAvailable: false,
       steal: false,
-      signal: controller.signal
+      signal: controller.signal,
     };
     this._init();
   }
 
-  private _clientId: string;
-
-  protected get requestQueueMap(): RequestQueueMap {
-    const requestQueueMap = window.localStorage.getItem(STORAGE_ITEM_KEY);
-    return requestQueueMap && JSON.parse(requestQueueMap) || {};
+  private get _requestLockQueueMap(): RequestQueueMap {
+    const requestQueueMap = window.localStorage.getItem(
+      STORAGE_KEYS.REQUEST_QUEUE_MAP
+    );
+    return (requestQueueMap && JSON.parse(requestQueueMap)) || {};
   }
 
-  private _addRequest(name: string, mode: LockMode) {
-    const requestQueueMap = this.requestQueueMap;
-    const requestQueue = requestQueueMap[name] || [];
-    const selfRequestQueue = this.selfRequestQueueMap[name] || [];
-
-    const request = {
-      clientId: this._clientId,
-      name,
-      mode
-    };
-
-    requestQueueMap[name] = [...requestQueue, request];
-    this.selfRequestQueueMap[name] = [...selfRequestQueue, request];
-
-    if (requestQueueMap[name].length !== requestQueue?.length) {
-      window.localStorage.setItem(STORAGE_ITEM_KEY, JSON.stringify(requestQueueMap));
-    }
-
-    return request;
+  private get _heldLockSet(): LocksInfo {
+    const heldLockSet = window.localStorage.getItem(STORAGE_KEYS.HELD_LOCK_SET);
+    return (heldLockSet && JSON.parse(heldLockSet)) || [];
   }
 
-  private _deleteFirstRequest(request: LockInfo) {
-    const clientId = this.requestQueueMap[request.name][0].clientId;
-    if (clientId) {
-      if (clientId === request.clientId) {
-        this._deleteRequest(request);
+  // delete old held lock and add move first request Lock to held lock set
+  private _updateHeldLockSetAndRequestLockQueueMap(request: LockInfo) {
+    let heldLockSet = this._heldLockSet;
+    const heldLockIndex = heldLockSet.findIndex(
+      (lock) => lock.uuid === request.uuid
+    );
+    if (heldLockIndex !== -1) {
+      heldLockSet.splice(heldLockIndex, 1);
+      const requestLockQueueMap = this._requestLockQueueMap;
+      const requestLockQueue = requestLockQueueMap[request.name] || [];
+      const [firstRequestLock, ...restRequestLocks] = requestLockQueue;
+      if (firstRequestLock) {
+        if (
+          firstRequestLock.mode === LOCK_MODE.EXCLUSIVE ||
+          restRequestLocks.length === 0
+        ) {
+          heldLockSet.push(firstRequestLock);
+          requestLockQueueMap[request.name] = restRequestLocks;
+        } else if (firstRequestLock.mode === LOCK_MODE.SHARED) {
+          const nonSharedLockIndex = requestLockQueue.findIndex(
+            (lock) => lock.mode !== LOCK_MODE.SHARED
+          );
+          heldLockSet = [
+            ...heldLockSet,
+            ...requestLockQueue.splice(0, nonSharedLockIndex),
+          ];
+
+          requestLockQueueMap[request.name] = requestLockQueue;
+        }
+
+        this._storeHeldLockSetAndRequestLockQueueMap(
+          heldLockSet,
+          requestLockQueueMap
+        );
+
+        return firstRequestLock;
       } else {
-        throw (`first request in queue is not found or not correct which should be ${request}!`);
+        this._storeHeldLockSet(heldLockSet);
       }
-    }
-  }
-
-  private _deleteSelfRequest({ name, clientId }: LockInfo) {
-    const selfQueueIndex = this.selfRequestQueueMap[name].findIndex((request) => request.clientId === clientId);
-    if (selfQueueIndex !== -1) {
-      this.selfRequestQueueMap[name].splice(selfQueueIndex, 1);
     } else {
-      throw (`first request in self Request queue is not found or not correct which clientId should be ${clientId}!`);
+      throw `could not find this held lock by uuid: ${request.uuid}!`;
     }
-  }
-
-  private _deleteGlobalRequest({ name, clientId }: LockInfo) {
-    const requestQueueMap = this.requestQueueMap;
-    const requestQueue = requestQueueMap[name];
-    const globalQueueIndex = requestQueue.findIndex(request => request.clientId === clientId);
-    if (globalQueueIndex !== -1) {
-      requestQueue.splice(globalQueueIndex, 1);
-      window.localStorage.setItem(STORAGE_ITEM_KEY, JSON.stringify(requestQueueMap));
-    } else {
-      throw (`first request in global Request queue is not found or not correct which clientId should be ${clientId}!`);
-    }
-  }
-
-  private _deleteRequest(request: LockInfo) {
-    this._deleteSelfRequest(request);
-    this._deleteGlobalRequest(request);
   }
 
   private _init() {
-    this._clientId = `${new Date().getTime()}-${String(Math.random()).substring(2)}`;
+    this._clientId = `${new Date().getTime()}-${String(Math.random()).substring(
+      2
+    )}`;
     onLocalStorageInit();
     this._onUnload();
   }
 
-  public async request(name: string, options?: LockOptions, callback?: LockGrantedCallback) {
-    return new Promise(async (resolve, reject) => {
+  private _pushToLockRequestQueueMap(request) {
+    const requestQueueMap = this._requestLockQueueMap;
+    const requestQueue = requestQueueMap[request.name] || [];
+    requestQueueMap[request.name] = [...requestQueue, request];
+
+    this._storeRequestLockQueueMap(requestQueueMap);
+    return request;
+  }
+
+  private _pushToHeldLockSet(request) {
+    const heldLockSet = [...this._heldLockSet, request];
+    this._storeHeldLockSet(heldLockSet);
+    return request;
+  }
+
+  public async request(
+    name: string,
+    options?: LockOptions,
+    callback?: LockGrantedCallback
+  ) {
+    return new Promise((resolve, reject) => {
       let cb;
-      if (typeof options === "function" && !callback) {
+      let _options: LockOptions = {};
+      if (
+        (options.constructor.name === "Function" ||
+          options.constructor.name === "AsyncFunction") &&
+        !callback
+      ) {
         cb = options;
-      } else if (!options && callback) {
+        _options = this.defaultOptions;
+      } else if (options.constructor.name === "Object" && callback) {
         cb = callback;
+        _options = { ...this.defaultOptions, ...options };
       } else {
         throw Error("please input right options");
       }
 
-      const _options = { ...this.defaultOptions, ...options };
+      const request = {
+        name,
+        mode: _options.mode,
+        clientId: this._clientId,
+        uuid: `${name}-${new Date().getTime()}-${String(
+          Math.random()
+        ).substring(2)}`,
+      };
 
-      const requestQueue = this.requestQueueMap[name];
-
-      if (!requestQueue || requestQueue.length === 0) {
-        const request = this._addRequest(name, _options.mode);
-        const result = await cb({ name, mode: _options.mode });
-        this._deleteFirstRequest(request);
-        resolve(result);
-      } else {
-        const _request = this._addRequest(name, _options.mode);
-        const listener = async () => {
-          if (_request.clientId === this._getCurrentRequest(name).clientId) {
-            const result = await cb({ name, mode: _options.mode });
-            this._deleteFirstRequest(_request);
-            resolve(result);
-            return true;
+      const heldLock = this._heldLockSet.find((e) => {
+        return e.name === name;
+      });
+      if (heldLock) {
+        if (heldLock.mode === LOCK_MODE.EXCLUSIVE) {
+          this._handleNewLockRequest(request, cb, resolve);
+        } else if (heldLock.mode === LOCK_MODE.SHARED) {
+          // if this request lock is shared lock and is first request lock of this queue, then push held locks set
+          const requestLockQueue =
+            this._requestLockQueueMap[request.name] || [];
+          if (
+            request.mode === LOCK_MODE.SHARED &&
+            requestLockQueue.length === 0
+          ) {
+            this._handleNewHeldLock(request, cb, resolve);
+          } else {
+            this._handleNewLockRequest(request, cb, resolve);
           }
-          return false;
         }
-        onStorageChange(STORAGE_ITEM_KEY, listener);
+      } else {
+        this._handleNewHeldLock(request, cb, resolve);
       }
-    })
+    });
+  }
+
+  private async _handleNewHeldLock(
+    request: LockInfo,
+    cb: any,
+    resolve: (value?: unknown) => void
+  ) {
+    this._pushToHeldLockSet(request);
+    const result = await cb({ name: request.name, mode: request.mode });
+    this._updateHeldLockSetAndRequestLockQueueMap(request);
+    resolve(result);
+  }
+
+  private _storeHeldLockSet(heldLockSet: LocksInfo) {
+    window.localStorage.setItem(
+      STORAGE_KEYS.HELD_LOCK_SET,
+      JSON.stringify(heldLockSet)
+    );
+  }
+
+  private _storeRequestLockQueueMap(requestLockQueueMap: RequestQueueMap) {
+    window.localStorage.setItem(
+      STORAGE_KEYS.REQUEST_QUEUE_MAP,
+      JSON.stringify(requestLockQueueMap)
+    );
+  }
+
+  private _handleNewLockRequest(
+    request: LockInfo,
+    cb: any,
+    resolve: (value?: unknown) => void
+  ) {
+    this._pushToLockRequestQueueMap(request);
+    let heldLockWIP = false;
+    const listener = async () => {
+      if (
+        !heldLockWIP &&
+        this._heldLockSet.some((e) => e.uuid === request.uuid)
+      ) {
+        heldLockWIP = true;
+        const result = await cb({ name: request.name, mode: request.mode });
+        if (request.mode === LOCK_MODE.EXCLUSIVE) {
+          this._updateHeldLockSetAndRequestLockQueueMap(request);
+        } else if (request.mode === LOCK_MODE.SHARED) {
+          const heldLockSet = this._heldLockSet;
+          // have other unreleased shared held lock for this source, just delete this held lock, else also need to push new request lock as held lock
+          const existOtherUnreleasedSharedHeldLock = heldLockSet.some(
+            (lock) =>
+              lock.name === request.name && lock.mode === LOCK_MODE.SHARED
+          );
+          // there is a issue when the shared locks release at the same time,
+          // existOtherUnreleasedSharedHeldLock will be true, then could not move request lock to held lock set
+          if (existOtherUnreleasedSharedHeldLock) {
+            // just delete this held lock
+            const heldLockIndex = heldLockSet.findIndex(
+              (lock) => lock.uuid === request.uuid
+            );
+            if (heldLockIndex !== -1) {
+              heldLockSet.splice(heldLockIndex, 1);
+              this._storeHeldLockSet(heldLockSet);
+            } else {
+              throw "this held lock should exist but could not be found!";
+            }
+
+            // handle above issue when the shared locks release at the same time
+            let latestHeldLockSet = this._heldLockSet;
+            if (!latestHeldLockSet.some((lock) => lock.name === request.name)) {
+              const requestLockQueueMap = this._requestLockQueueMap;
+              const [firstRequestLock, ...restRequestLocks] =
+                requestLockQueueMap[request.name] || [];
+              if (firstRequestLock) {
+                latestHeldLockSet.push(firstRequestLock);
+                requestLockQueueMap[request.name] = restRequestLocks;
+                this._storeHeldLockSetAndRequestLockQueueMap(
+                  latestHeldLockSet,
+                  requestLockQueueMap
+                );
+              }
+            }
+          } else {
+            this._updateHeldLockSetAndRequestLockQueueMap(request);
+          }
+        }
+        resolve(result);
+        return true;
+      }
+      return false;
+    };
+    onStorageChange(STORAGE_KEYS.HELD_LOCK_SET, listener);
+  }
+
+  private _storeHeldLockSetAndRequestLockQueueMap(
+    heldLockSet: LocksInfo,
+    requestLockQueueMap: RequestQueueMap
+  ) {
+    this._storeHeldLockSet(heldLockSet);
+    this._storeRequestLockQueueMap(requestLockQueueMap);
   }
 
   public query() {
-    const requestQueueMap = this.requestQueueMap;
-    const queryResult: Query = {
-      held: [],
+    const queryResult: LockManagerSnapshot = {
+      held: this._heldLockSet,
       pending: [],
-    }
-    for (const name in requestQueueMap) {
-      const [firstRequest, ...restRequest] = requestQueueMap[name];
-      firstRequest && queryResult.held.push(firstRequest);
-      queryResult.pending = queryResult.pending.concat(restRequest);
+    };
+    const requestLockQueueMap = this._requestLockQueueMap;
+    for (const name in requestLockQueueMap) {
+      const requestLockQueue = requestLockQueueMap[name];
+      queryResult.pending = queryResult.pending.concat(requestLockQueue);
     }
     return queryResult;
   }
 
-  private _getCurrentRequest(name) {
-    return this.requestQueueMap[name][0];
-  }
-
   private _onUnload() {
-    window.addEventListener('unload', (e) => {
-      const selfRequestQueueMap = this.selfRequestQueueMap;
-      for (const name in selfRequestQueueMap) {
-        if (Object.prototype.hasOwnProperty.call(selfRequestQueueMap, name)) {
-          const selfRequestQueue = selfRequestQueueMap[name];
-          selfRequestQueue.forEach(request => {
-            this._deleteGlobalRequest(request);
-          });
-        }
+    window.addEventListener("unload", (e) => {
+      const requestLockQueueMap = this._requestLockQueueMap;
+      for (const sourceName in requestLockQueueMap) {
+        const requestLockQueue = requestLockQueueMap[sourceName];
+        requestLockQueueMap[sourceName] = requestLockQueue.filter(
+          (requestLock) => {
+            requestLock.clientId !== this._clientId;
+          }
+        );
       }
+
+      let heldLockSet = this._heldLockSet;
+      let removedHeldLockSet = [];
+
+      heldLockSet = heldLockSet.reduce((pre, cur) => {
+        if (cur.clientId !== this._clientId) {
+          pre.push(cur);
+        } else {
+          removedHeldLockSet.push(cur);
+        }
+        return pre;
+      }, []);
+
+      removedHeldLockSet.forEach((lock) => {
+        const requestLockQueue = requestLockQueueMap[lock.name];
+        const [firstRequestLock, ...restRequestLocks] = requestLockQueue;
+        if (firstRequestLock) {
+          if (
+            firstRequestLock.mode === LOCK_MODE.EXCLUSIVE ||
+            restRequestLocks.length === 0
+          ) {
+            heldLockSet.push(firstRequestLock);
+            requestLockQueueMap[lock.name] = restRequestLocks;
+          } else if (firstRequestLock.mode === LOCK_MODE.SHARED) {
+            const nonSharedLockIndex = requestLockQueue.findIndex(
+              (lock) => lock.mode !== LOCK_MODE.SHARED
+            );
+            heldLockSet = [
+              ...heldLockSet,
+              ...requestLockQueue.splice(0, nonSharedLockIndex),
+            ];
+
+            requestLockQueueMap[lock.name] = requestLockQueue;
+          }
+        }
+      });
+
+      this._storeHeldLockSetAndRequestLockQueueMap(
+        heldLockSet,
+        requestLockQueueMap
+      );
     });
   }
 }
