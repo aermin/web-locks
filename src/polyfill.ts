@@ -170,13 +170,19 @@ export class WebLocks {
       const heldLock = this._heldLockSet().find((e) => {
         return e.name === name;
       });
+      const requestLockQueue = this._requestLockQueueMap[request.name] || [];
+      if (_options.ifAvailable) {
+        if (heldLock || requestLockQueue.length) {
+          return resolve(cb(null));
+        } else {
+          return this._handleNewHeldLock(request, cb, resolve);
+        }
+      }
       if (heldLock) {
         if (heldLock.mode === LOCK_MODE.EXCLUSIVE) {
           this._handleNewLockRequest(request, cb, resolve);
         } else if (heldLock.mode === LOCK_MODE.SHARED) {
           // if this request lock is shared lock and is first request lock of this queue, then push held locks set
-          const requestLockQueue =
-            this._requestLockQueueMap()[request.name] || [];
           if (
             request.mode === LOCK_MODE.SHARED &&
             requestLockQueue.length === 0
