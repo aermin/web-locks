@@ -110,7 +110,9 @@ export class WebLocks {
         this._storeHeldLockSet(heldLockSet);
       }
     } else {
-      console.log(`this held lock which uuid is ${request.uuid} had been steal`);
+      console.log(
+        `this held lock which uuid is ${request.uuid} had been steal`
+      );
     }
   }
 
@@ -171,6 +173,16 @@ export class WebLocks {
       let heldLockSet = this._heldLockSet();
 
       if (_options.steal) {
+        if (_options.mode !== LOCK_MODE.EXCLUSIVE) {
+          throw new DOMException(
+            "Failed to execute 'request' on 'LockManager': The 'steal' option may only be used with 'exclusive' locks."
+          );
+        }
+        if (_options.ifAvailable) {
+          throw new DOMException(
+            "Failed to execute 'request' on 'LockManager': The 'steal' and 'ifAvailable' options cannot be used together."
+          );
+        }
         heldLockSet = heldLockSet.filter((e) => e.name !== request.name);
       }
 
