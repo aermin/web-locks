@@ -110,9 +110,7 @@ export class WebLocks {
         this._storeHeldLockSet(heldLockSet);
       }
     } else {
-      throw new Error(
-        `could not find this held lock by uuid: ${request.uuid}!`
-      );
+      console.log(`this held lock which uuid is ${request.uuid} had been steal`);
     }
   }
 
@@ -130,8 +128,11 @@ export class WebLocks {
     return request;
   }
 
-  private _pushToHeldLockSet(request) {
-    const heldLockSet = [...this._heldLockSet(), request];
+  private _pushToHeldLockSet(
+    request: LockInfo,
+    currentHeldLockSet = this._heldLockSet()
+  ) {
+    const heldLockSet = [...currentHeldLockSet, request];
     this._storeHeldLockSet(heldLockSet);
     return request;
   }
@@ -167,7 +168,13 @@ export class WebLocks {
         ).substring(2)}`,
       };
 
-      const heldLock = this._heldLockSet().find((e) => {
+      let heldLockSet = this._heldLockSet();
+
+      if (_options.steal) {
+        heldLockSet = heldLockSet.filter((e) => e.name !== request.name);
+      }
+
+      const heldLock = heldLockSet.find((e) => {
         return e.name === name;
       });
       if (heldLock) {
@@ -181,13 +188,13 @@ export class WebLocks {
             request.mode === LOCK_MODE.SHARED &&
             requestLockQueue.length === 0
           ) {
-            this._handleNewHeldLock(request, cb, resolve);
+            this._handleNewHeldLock(request, cb, resolve, heldLockSet);
           } else {
             this._handleNewLockRequest(request, cb, resolve);
           }
         }
       } else {
-        this._handleNewHeldLock(request, cb, resolve);
+        this._handleNewHeldLock(request, cb, resolve, heldLockSet);
       }
     });
   }
@@ -195,9 +202,10 @@ export class WebLocks {
   private async _handleNewHeldLock(
     request: LockInfo,
     cb: any,
-    resolve: (value?: unknown) => void
+    resolve: (value?: unknown) => void,
+    currentHeldLockSet?: LocksInfo
   ) {
-    this._pushToHeldLockSet(request);
+    this._pushToHeldLockSet(request, currentHeldLockSet);
     const result = await cb({ name: request.name, mode: request.mode });
     this._updateHeldAndRequestLocks(request);
     resolve(result);
