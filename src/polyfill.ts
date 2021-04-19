@@ -171,6 +171,10 @@ export class WebLocks {
       };
 
       let heldLockSet = this._heldLockSet();
+      let heldLock = heldLockSet.find((e) => {
+        return e.name === name;
+      });
+      const requestLockQueue = this._requestLockQueueMap[request.name] || [];
 
       if (_options.steal) {
         if (_options.mode !== LOCK_MODE.EXCLUSIVE) {
@@ -184,19 +188,29 @@ export class WebLocks {
           );
         }
         heldLockSet = heldLockSet.filter((e) => e.name !== request.name);
-      }
-
-      const heldLock = heldLockSet.find((e) => {
-        return e.name === name;
-      });
-      const requestLockQueue = this._requestLockQueueMap[request.name] || [];
-      if (_options.ifAvailable) {
+        heldLock = heldLockSet.find((e) => {
+          return e.name === name;
+        });
+      } else if (_options.ifAvailable) {
         if (heldLock || requestLockQueue.length) {
           return resolve(cb(null));
         } else {
           return this._handleNewHeldLock(request, cb, resolve);
         }
+      } else if (_options.signal) {
+        if (_options.signal.aborted) {
+          return reject(
+            new DOMException(
+              "Failed to execute 'request' on 'LockManager': The request was aborted."
+            )
+          );
+        } else {
+          _options.signal.onabort = () => {
+            throw new DOMException("The request was aborted.");
+          };
+        }
       }
+
       if (heldLock) {
         if (heldLock.mode === LOCK_MODE.EXCLUSIVE) {
           this._handleNewLockRequest(request, cb, resolve);
