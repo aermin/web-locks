@@ -1,29 +1,27 @@
 import { onLocalStorageInit, onStorageChange } from "./localStorageSubscribe";
 
-const LOCK_MODE = {
-  EXCLUSIVE: "exclusive",
-  SHARED: "shared",
-} as const;
+enum LOCK_MODE {
+  EXCLUSIVE = "exclusive",
+  SHARED = "shared",
+}
 
-const STORAGE_KEYS = {
-  REQUEST_QUEUE_MAP: "requestQueueMap",
-  HELD_LOCK_SET: "heldLockSet",
-};
-
-type LockMode = typeof LOCK_MODE[keyof typeof LOCK_MODE];
+enum STORAGE_KEYS {
+  REQUEST_QUEUE_MAP = "requestQueueMap",
+  HELD_LOCK_SET = "heldLockSet",
+}
 interface LockOptions {
-  mode?: LockMode;
+  mode?: LOCK_MODE;
   ifAvailable?: Boolean;
   steal?: Boolean;
   signal?: AbortSignal;
 }
 
 type Lock = {
-  mode: LockMode;
+  mode: LOCK_MODE;
   name: string;
 };
 
-type LockGrantedCallback = ({ name, mode }: Lock) => Promise<any>;
+type LockGrantedCallback = (lock?: Lock) => Promise<any>;
 
 type LockInfo = Lock & {
   clientId: string;
@@ -139,24 +137,30 @@ export class WebLocks {
     return request;
   }
 
+  public async request(name: string, callback: LockGrantedCallback);
   public async request(
     name: string,
-    options?: LockOptions,
+    options: LockOptions,
+    callback: LockGrantedCallback
+  );
+  public async request(
+    name: string,
+    optionsOrCallback: LockOptions | LockGrantedCallback,
     callback?: LockGrantedCallback
   ) {
     return new Promise((resolve, reject) => {
       let cb;
       let _options: LockOptions = {};
       if (
-        (options.constructor.name === "Function" ||
-          options.constructor.name === "AsyncFunction") &&
+        (optionsOrCallback?.constructor.name === "Function" ||
+          optionsOrCallback?.constructor.name === "AsyncFunction") &&
         !callback
       ) {
-        cb = options;
+        cb = optionsOrCallback;
         _options = this.defaultOptions;
-      } else if (options.constructor.name === "Object" && callback) {
+      } else if (optionsOrCallback?.constructor.name === "Object" && callback) {
         cb = callback;
-        _options = { ...this.defaultOptions, ...options };
+        _options = { ...this.defaultOptions, ...optionsOrCallback };
       } else {
         throw new Error("please input right options");
       }
@@ -342,38 +346,37 @@ export class WebLocks {
         );
       }
 
-      let heldLockSet = this._heldLockSet();
-      let removedHeldLockSet = [];
+      const heldLockSet = this._heldLockSet();
+      const removedHeldLockSet = [];
 
-      heldLockSet = heldLockSet.reduce((pre, cur) => {
-        if (cur.clientId !== this._clientId) {
-          pre.push(cur);
+      let newHeldLockSet = [];
+
+      heldLockSet.forEach((element) => {
+        if (element.clientId !== this._clientId) {
+          newHeldLockSet.push(element);
         } else {
-          removedHeldLockSet.push(cur);
-        }
-        return pre;
-      }, []);
+          removedHeldLockSet.push(element);
 
-      removedHeldLockSet.forEach((lock) => {
-        const requestLockQueue = requestLockQueueMap[lock.name];
-        const [firstRequestLock, ...restRequestLocks] = requestLockQueue;
-        if (firstRequestLock) {
-          if (
-            firstRequestLock.mode === LOCK_MODE.EXCLUSIVE ||
-            restRequestLocks.length === 0
-          ) {
-            heldLockSet.push(firstRequestLock);
-            requestLockQueueMap[lock.name] = restRequestLocks;
-          } else if (firstRequestLock.mode === LOCK_MODE.SHARED) {
-            const nonSharedLockIndex = requestLockQueue.findIndex(
-              (lock) => lock.mode !== LOCK_MODE.SHARED
-            );
-            heldLockSet = [
-              ...heldLockSet,
-              ...requestLockQueue.splice(0, nonSharedLockIndex),
-            ];
+          const requestLockQueue = requestLockQueueMap[element.name];
+          const [firstRequestLock, ...restRequestLocks] = requestLockQueue;
+          if (firstRequestLock) {
+            if (
+              firstRequestLock.mode === LOCK_MODE.EXCLUSIVE ||
+              restRequestLocks.length === 0
+            ) {
+              newHeldLockSet.push(firstRequestLock);
+              requestLockQueueMap[element.name] = restRequestLocks;
+            } else if (firstRequestLock.mode === LOCK_MODE.SHARED) {
+              const nonSharedLockIndex = requestLockQueue.findIndex(
+                (lock) => lock.mode !== LOCK_MODE.SHARED
+              );
+              newHeldLockSet = [
+                ...newHeldLockSet,
+                ...requestLockQueue.splice(0, nonSharedLockIndex),
+              ];
 
-            requestLockQueueMap[lock.name] = requestLockQueue;
+              requestLockQueueMap[element.name] = requestLockQueue;
+            }
           }
         }
       });

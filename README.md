@@ -2,15 +2,17 @@
 
 ## API:
 
-### lock.request
 
-[x] main method
+- [x] lock.request
 
-[-] refactor => request queue, request map
-[-] share mode
-[-] ifAvailable
-[-] steal
+   - [x] lock.request option -> `mode`
+   - [x] lock.request option -> `ifAvailable `
+   - [x] lock.request option -> `steal`
+   - [x] lock.request option -> `1signal`
 
-### lock.query
+- [x] lock.query
 
+## TODO:
 
+- [] CI/CD
+- [] UT/IT
