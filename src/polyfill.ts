@@ -152,8 +152,7 @@ export class WebLocks {
       let cb;
       let _options: LockOptions = {};
       if (
-        (optionsOrCallback?.constructor.name === "Function" ||
-          optionsOrCallback?.constructor.name === "AsyncFunction") &&
+        (typeof optionsOrCallback === "function") &&
         !callback
       ) {
         cb = optionsOrCallback;
