@@ -10,10 +10,10 @@ enum STORAGE_KEYS {
   HELD_LOCK_SET = "heldLockSet",
 }
 interface LockOptions {
-  mode?: LOCK_MODE;
-  ifAvailable?: Boolean;
-  steal?: Boolean;
-  signal?: AbortSignal;
+  mode: LOCK_MODE;
+  ifAvailable: Boolean;
+  steal: Boolean;
+  signal: AbortSignal;
 }
 
 type Lock = {
@@ -21,7 +21,7 @@ type Lock = {
   name: string;
 };
 
-type LockGrantedCallback = (lock?: Lock) => Promise<any>;
+type LockGrantedCallback = (lock?: Lock | null) => Promise<any>;
 
 type LockInfo = Lock & {
   clientId: string;
@@ -119,7 +119,7 @@ export class WebLocks {
     this._onUnload();
   }
 
-  private _pushToLockRequestQueueMap(request) {
+  private _pushToLockRequestQueueMap(request: LockInfo) {
     const requestQueueMap = this._requestLockQueueMap();
     const requestQueue = requestQueueMap[request.name] || [];
     requestQueueMap[request.name] = [...requestQueue, request];
@@ -137,24 +137,24 @@ export class WebLocks {
     return request;
   }
 
-  public async request(name: string, callback: LockGrantedCallback);
   public async request(
     name: string,
-    options: LockOptions,
     callback: LockGrantedCallback
-  );
+  ): Promise<any>;
   public async request(
     name: string,
-    optionsOrCallback: LockOptions | LockGrantedCallback,
+    options: Partial<LockOptions>,
+    callback: LockGrantedCallback
+  ): Promise<any>;
+  public async request(
+    name: string,
+    optionsOrCallback: Partial<LockOptions> | LockGrantedCallback,
     callback?: LockGrantedCallback
   ) {
     return new Promise((resolve, reject) => {
       let cb;
-      let _options: LockOptions = {};
-      if (
-        (typeof optionsOrCallback === "function") &&
-        !callback
-      ) {
+      let _options: LockOptions;
+      if (typeof optionsOrCallback === "function" && !callback) {
         cb = optionsOrCallback;
         _options = this.defaultOptions;
       } else if (optionsOrCallback?.constructor.name === "Object" && callback) {
@@ -177,7 +177,7 @@ export class WebLocks {
       let heldLock = heldLockSet.find((e) => {
         return e.name === name;
       });
-      const requestLockQueue = this._requestLockQueueMap[request.name] || [];
+      const requestLockQueue = this._requestLockQueueMap()[request.name] || [];
 
       if (_options.steal) {
         if (_options.mode !== LOCK_MODE.EXCLUSIVE) {
@@ -262,7 +262,7 @@ export class WebLocks {
 
   private _handleNewLockRequest(
     request: LockInfo,
-    cb: (Lock) => any,
+    cb: (Lock: Lock) => any,
     resolve: (value?: unknown) => void
   ) {
     this._pushToLockRequestQueueMap(request);
@@ -360,9 +360,9 @@ export class WebLocks {
       }
 
       const heldLockSet = this._heldLockSet();
-      const removedHeldLockSet = [];
+      const removedHeldLockSet: LocksInfo = [];
 
-      let newHeldLockSet = [];
+      let newHeldLockSet: LocksInfo = [];
 
       heldLockSet.forEach((element) => {
         if (element.clientId !== this._clientId) {

@@ -14,5 +14,5 @@
 
 ## TODO:
 
-- [] CI/CD
-- [] UT/IT
+- [ ] CI/CD
+- [ ] UT/IT
