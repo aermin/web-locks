@@ -12,13 +12,13 @@ export default {
       file: "dist/index.cjs.js",
       format: "cjs",
       exports: 'auto',
-      sourcemap: true,
+      // sourcemap: true,
     },
     {
       file: "dist/index.umd.js",
       format: "umd",
       name: pkg.name,
-      sourcemap: true,
+      // sourcemap: true,
     },
   ],
   plugins: [
