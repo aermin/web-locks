@@ -1,13 +1,10 @@
 {
-  "name": "web-locks",
+  "name": "navigator.locks",
   "description": "support Web Locks API work in major browsers",
-  "version": "0.0.1",
+  "version": "0.1.2",
   "main": "dist/index.cjs.js",
   "unpkg": "dist/index.umd.js",
   "types": "dist/index.d.ts",
-  "dependencies": {
-    "broadcast-channel": "^3.3.0"
-  },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "clean": "rimraf dist",
@@ -21,7 +18,8 @@
   "keywords": [
     "Web",
     "Locks",
-    "Web Locks"
+    "Web Locks",
+    "polyfill"
   ],
   "author": "aermin",
   "license": "MIT",
