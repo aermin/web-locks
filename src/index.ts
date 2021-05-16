@@ -16,4 +16,4 @@ const locks = (function () {
   return navigator?.locks;
 })();
 
-export { locks };
+export default locks;
