@@ -123,6 +123,7 @@ export class WebLocks {
     const requestQueueMap = this._requestLockQueueMap();
     const requestQueue = requestQueueMap[request.name] || [];
     requestQueueMap[request.name] = [...requestQueue, request];
+
     this._storeRequestLockQueueMap(requestQueueMap);
     return request;
   }
@@ -212,6 +213,7 @@ export class WebLocks {
           };
         }
       }
+
       if (heldLock) {
         if (heldLock.mode === LOCK_MODE.EXCLUSIVE) {
           this._handleNewLockRequest(request, cb, resolve);
