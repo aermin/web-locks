@@ -65,7 +65,6 @@ export class WebLocks {
 
   private _heldLockSet(): LocksInfo {
     const heldLockSet = window.localStorage.getItem(STORAGE_KEYS.HELD_LOCK_SET);
-    console.log("_heldLockSet===111", heldLockSet && JSON.parse(heldLockSet));
     return (heldLockSet && JSON.parse(heldLockSet)) || [];
   }
 
@@ -124,9 +123,7 @@ export class WebLocks {
     const requestQueueMap = this._requestLockQueueMap();
     const requestQueue = requestQueueMap[request.name] || [];
     requestQueueMap[request.name] = [...requestQueue, request];
-    console.log("_pushToLockRequestQueueMap===1", requestQueueMap);
     this._storeRequestLockQueueMap(requestQueueMap);
-    console.log("_pushToLockRequestQueueMap===2", this._requestLockQueueMap());
     return request;
   }
 
@@ -174,14 +171,11 @@ export class WebLocks {
           Math.random()
         ).substring(2)}`,
       };
-      console.log("request==_options", request, _options);
 
       let heldLockSet = this._heldLockSet();
-      console.log("heldLockSet===", heldLockSet);
       let heldLock = heldLockSet.find((e) => {
         return e.name === name;
       });
-      console.log("heldLock===", heldLock);
       const requestLockQueue = this._requestLockQueueMap()[request.name] || [];
 
       if (_options.steal) {
@@ -218,10 +212,8 @@ export class WebLocks {
           };
         }
       }
-      console.log("heldLock===", heldLock);
       if (heldLock) {
         if (heldLock.mode === LOCK_MODE.EXCLUSIVE) {
-          console.log("_handleNewLockRequest==1");
           this._handleNewLockRequest(request, cb, resolve);
         } else if (heldLock.mode === LOCK_MODE.SHARED) {
           // if this request lock is shared lock and is first request lock of this queue, then push held locks set
@@ -235,7 +227,6 @@ export class WebLocks {
           }
         }
       } else {
-        console.log("_handleNewLockRequest==2");
         this._handleNewHeldLock(request, cb, resolve, heldLockSet);
       }
     });
@@ -247,7 +238,6 @@ export class WebLocks {
     resolve: (value?: unknown) => void,
     currentHeldLockSet?: LocksInfo
   ) {
-    console.log("_handleNewHeldLock====", currentHeldLockSet);
     this._pushToHeldLockSet(request, currentHeldLockSet);
     const result = await cb({ name: request.name, mode: request.mode });
     this._updateHeldAndRequestLocks(request);
@@ -255,7 +245,6 @@ export class WebLocks {
   }
 
   private _storeHeldLockSet(heldLockSet: LocksInfo) {
-    console.log("_storeHeldLockSet===");
     window.localStorage.setItem(
       STORAGE_KEYS.HELD_LOCK_SET,
       JSON.stringify(heldLockSet)

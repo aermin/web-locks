@@ -16,4 +16,4 @@ const locks = (function () {
   return navigator?.locks;
 })();
 
-export default locks;
+export { WebLocks, locks as default }
