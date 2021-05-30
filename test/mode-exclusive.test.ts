@@ -1,5 +1,5 @@
 import { WebLocks } from "../src";
-import { EventType } from "../src/localStorageSubscribe";
+import { dispatchEvent } from "../src/localStorageSubscribe";
 
 describe("test suite of Web Locks API: mode-exclusive", () => {
   let mockFridge: { [P: string]: any } = {};
@@ -7,10 +7,7 @@ describe("test suite of Web Locks API: mode-exclusive", () => {
   beforeEach(() => {
     global.Storage.prototype.setItem = jest.fn((key, value) => {
       mockFridge[key] = value;
-      var event: EventType = new Event(key);
-      event.value = value;
-      event.key = key;
-      document.dispatchEvent(event);
+      dispatchEvent(key, value);
     });
     global.Storage.prototype.getItem = jest.fn((key) => mockFridge[key]);
   });
