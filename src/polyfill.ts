@@ -21,7 +21,7 @@ type Lock = {
   name: string;
 };
 
-type LockGrantedCallback = (lock?: Lock | null) => Promise<any>;
+type LockGrantedCallback = (lock?: Lock | null) => Promise<any> | any;
 
 type LockInfo = Lock & {
   clientId: string;

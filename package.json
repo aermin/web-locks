@@ -6,7 +6,7 @@
   "unpkg": "dist/index.umd.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "jest",
     "clean": "rimraf dist",
     "build": "yarn clean && tsc && rollup -c ",
     "commit": "yarn git-cz"
@@ -32,11 +32,19 @@
     "@rollup/plugin-json": "^4.1.0",
     "@rollup/plugin-node-resolve": "^11.0.0",
     "@rollup/plugin-typescript": "^8.2.1",
+    "@types/jest": "^26.0.23",
     "git-cz": "^4.7.5",
+    "jest": "^27.0.1",
     "rimraf": "^3.0.2",
     "rollup": "^2.34.1",
     "rollup-plugin-terser": "^7.0.2",
+    "ts-jest": "^27.0.0",
     "tslib": "^2.2.0",
     "typescript": "^4.2.4"
-  }
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "jsdom"
+  },
+  "dependencies": {}
 }

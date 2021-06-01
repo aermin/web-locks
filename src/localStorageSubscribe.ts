@@ -1,20 +1,23 @@
-type EventType = Event & {
+export type EventType = Event & {
   value?: string;
   key?: string;
 };
+
+export function dispatchEvent(key: string, value: string) {
+  const event: EventType = new Event(key);
+
+  event.value = value;
+  event.key = key;
+  document.dispatchEvent(event);
+}
 
 export function onLocalStorageInit() {
   const originalSetItem = localStorage.setItem;
 
   localStorage.setItem = function (key, value) {
-    var event: EventType = new Event(key);
-
-    event.value = value;
-    event.key = key;
-
     originalSetItem.apply(this, [key, value]);
 
-    document.dispatchEvent(event);
+    dispatchEvent(key, value);
   };
 }
 
