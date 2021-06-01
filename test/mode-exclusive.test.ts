@@ -1,16 +1,8 @@
 import { WebLocks } from "../src";
-import { dispatchEvent } from "../src/localStorageSubscribe";
+import beforeEachHandle from "./beforeEachHandle";
 
 describe("test suite of Web Locks API: mode-exclusive", () => {
-  let mockFridge: { [P: string]: any } = {};
-
-  beforeEach(() => {
-    global.Storage.prototype.setItem = jest.fn((key, value) => {
-      mockFridge[key] = value;
-      dispatchEvent(key, value);
-    });
-    global.Storage.prototype.getItem = jest.fn((key) => mockFridge[key]);
-  });
+  beforeEachHandle();
 
   test("Lock requests are granted in order", async () => {
     const granted: Number[] = [];
