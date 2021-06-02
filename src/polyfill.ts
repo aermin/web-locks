@@ -1,23 +1,25 @@
 import { onLocalStorageInit, onStorageChange } from "./localStorageSubscribe";
 
-enum LOCK_MODE {
-  EXCLUSIVE = "exclusive",
-  SHARED = "shared",
-}
+const LOCK_MODE = {
+  EXCLUSIVE: "exclusive",
+  SHARED: "shared",
+} as const;
+
+type LockMode = typeof LOCK_MODE[keyof typeof LOCK_MODE];
 
 enum STORAGE_KEYS {
   REQUEST_QUEUE_MAP = "requestQueueMap",
   HELD_LOCK_SET = "heldLockSet",
 }
 interface LockOptions {
-  mode: LOCK_MODE;
+  mode: LockMode;
   ifAvailable: Boolean;
   steal: Boolean;
   signal: AbortSignal;
 }
 
 type Lock = {
-  mode: LOCK_MODE;
+  mode: LockMode;
   name: string;
 };
 
