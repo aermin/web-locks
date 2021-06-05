@@ -1,5 +1,4 @@
-import { WebLocks } from "../src";
-import beforeEachHandle from "./beforeEachHandle";
+import { beforeEachHandle, createWebLocksInstance } from "./helpers";
 
 describe("test suite of Web Locks API: mode-exclusive", () => {
   beforeEachHandle();
@@ -11,8 +10,8 @@ describe("test suite of Web Locks API: mode-exclusive", () => {
         granted.push(n);
       };
     }
-    const webLocks = new WebLocks();
-    window.localStorage.removeItem("heldLockSet");
+
+    const webLocks = createWebLocksInstance();
 
     await Promise.all([
       webLocks.request("a", log_grant(1)),
@@ -29,7 +28,8 @@ describe("test suite of Web Locks API: mode-exclusive", () => {
         granted.push(n);
       };
     }
-    const webLocks = new WebLocks();
+
+    const webLocks = createWebLocksInstance();
 
     let inner_promise;
     await webLocks.request("a", async (lock) => {
