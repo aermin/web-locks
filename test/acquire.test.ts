@@ -4,6 +4,20 @@ import {
   generateRandomId,
 } from "./helpers";
 
+async function testCallBackArg(arg: any) {
+  const webLocks = createWebLocksInstance();
+  const sourceName = generateRandomId();
+  try {
+    // @ts-ignore
+    await webLocks.request(sourceName, arg);
+  } catch (error) {
+    expect(error.message).toEqual(
+      "Failed to execute 'request' on 'LockManager': parameter 2 is not of type 'Function'."
+    );
+    expect(error.name).toEqual("TypeError");
+  }
+}
+
 describe("Returned Promise rejects if callback throws asynchronously", () => {
   beforeEachHandle();
 
@@ -56,6 +70,7 @@ describe("Returned Promise rejects if callback throws asynchronously", () => {
 
     // 'mode is exclusive'
     let mode;
+    // @ts-ignore
     await webLocks.request(
       sourceName,
       { mode: "exclusive" },
@@ -64,6 +79,7 @@ describe("Returned Promise rejects if callback throws asynchronously", () => {
     expect(mode).toEqual("exclusive");
 
     // 'mode is shared'
+    // @ts-ignore
     await webLocks.request(
       sourceName,
       { mode: "shared" },
@@ -147,6 +163,82 @@ describe("Returned Promise rejects if callback throws asynchronously", () => {
         "Failed to execute 'request' on 'LockManager': The 'signal' and 'ifAvailable' options cannot be used together."
       );
       expect(error instanceof DOMException).toBeTruthy();
+    }
+  });
+
+  test("callback must be a function", async () => {
+    await testCallBackArg(undefined);
+
+    await testCallBackArg(null);
+
+    await testCallBackArg(123);
+
+    await testCallBackArg("abc");
+
+    await testCallBackArg([]);
+
+    await testCallBackArg({});
+
+    await testCallBackArg(new Promise((r) => {}));
+  });
+
+  test("navigator.locks.request's returned promise resolves after ock is released", async () => {
+    const webLocks = createWebLocksInstance();
+    const sourceName = generateRandomId();
+
+    let release;
+    const promise = new Promise((r) => {
+      release = r;
+    });
+    let returned = webLocks.request(sourceName, (lock) => {
+      return promise;
+    });
+    const order: string[] = [];
+    returned.then(() => {
+      order.push("returned");
+    });
+    promise.then(() => {
+      order.push("holding");
+    });
+    // @ts-ignore
+    release();
+    await Promise.all([returned, promise]);
+    expect(order).toEqual(["holding", "returned"]);
+  });
+
+  test("Returned Promise rejects if callback throws synchronously", async () => {
+    const webLocks = createWebLocksInstance();
+    const sourceName = generateRandomId();
+
+    const test_error = { name: "test" };
+    const p = webLocks.request(sourceName, (lock) => {
+      throw test_error;
+    });
+    //request() result is a Promise
+    expect(Promise.resolve(p)).toEqual(p);
+    // result should reject
+    try {
+      await p;
+    } catch (error) {
+      expect(error).toEqual(test_error);
+    }
+  });
+
+  test("Returned Promise rejects if callback throws asynchronously", async () => {
+    const webLocks = createWebLocksInstance();
+    const sourceName = generateRandomId();
+
+    const test_error = { name: "test" };
+    const p = webLocks.request(sourceName, async (lock) => {
+      throw test_error;
+    });
+    //request() result is a Promise
+    expect(Promise.resolve(p)).toEqual(p);
+    // result should reject
+    try {
+      await p;
+    } catch (error) {
+      expect(error).toEqual(test_error);
     }
   });
 });

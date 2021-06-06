@@ -159,27 +159,38 @@ export class WebLocks {
     ]
   ) {
     const self = this;
-    return new Promise(function (resolve, reject) {
+    return new Promise(async function (resolve, reject) {
       let cb;
       let _options: LockOptions;
-      if (args.length < 2) {
+      const argsLength = args.length;
+      if (argsLength < 2) {
         return reject(
           new TypeError(
             `Failed to execute 'request' on 'LockManager': 2 arguments required, but only ${args.length} present.`
           )
         );
-      }
-      const name = args[0];
-      const optionsOrCallback = args[1];
-      const callback = args[2];
-      if (typeof optionsOrCallback === "function" && !callback) {
-        cb = optionsOrCallback;
-        _options = self.defaultOptions;
-      } else if (optionsOrCallback?.constructor.name === "Object" && callback) {
-        cb = callback;
-        _options = { ...self.defaultOptions, ...optionsOrCallback };
+      } else if (argsLength === 2) {
+        if (typeof args[1] !== "function") {
+          return reject(
+            new TypeError(
+              "Failed to execute 'request' on 'LockManager': parameter 2 is not of type 'Function'."
+            )
+          );
+        } else {
+          cb = args[1];
+          _options = self.defaultOptions;
+        }
       } else {
-        throw new Error("please input right options");
+        if (typeof args[2] !== "function") {
+          return reject(
+            new TypeError(
+              "Failed to execute 'request' on 'LockManager': parameter 3 is not of type 'Function'."
+            )
+          );
+        } else {
+          cb = args[2];
+          _options = { ...self.defaultOptions, ...args[1] };
+        }
       }
       if (Object.values(LOCK_MODE).indexOf(_options.mode) < 0) {
         return reject(
@@ -188,6 +199,8 @@ export class WebLocks {
           )
         );
       }
+
+      const name = args[0];
 
       const request = {
         name,
@@ -223,9 +236,14 @@ export class WebLocks {
         });
       } else if (_options.ifAvailable) {
         if (heldLock || requestLockQueue.length) {
-          return resolve(cb(null));
+          try {
+            const result = await cb(null);
+            return resolve(result);
+          } catch (error) {
+            return reject(error);
+          }
         } else {
-          return self._handleNewHeldLock(request, cb, resolve);
+          return self._handleNewHeldLock(request, cb, resolve, reject);
         }
       } else if (_options.signal) {
         if (_options.signal.aborted) {
@@ -243,20 +261,20 @@ export class WebLocks {
 
       if (heldLock) {
         if (heldLock.mode === LOCK_MODE.EXCLUSIVE) {
-          self._handleNewLockRequest(request, cb, resolve);
+          self._handleNewLockRequest(request, cb, resolve, reject);
         } else if (heldLock.mode === LOCK_MODE.SHARED) {
           // if this request lock is shared lock and is first request lock of this queue, then push held locks set
           if (
             request.mode === LOCK_MODE.SHARED &&
             requestLockQueue.length === 0
           ) {
-            self._handleNewHeldLock(request, cb, resolve, heldLockSet);
+            self._handleNewHeldLock(request, cb, resolve, reject, heldLockSet);
           } else {
-            self._handleNewLockRequest(request, cb, resolve);
+            self._handleNewLockRequest(request, cb, resolve, reject);
           }
         }
       } else {
-        self._handleNewHeldLock(request, cb, resolve, heldLockSet);
+        self._handleNewHeldLock(request, cb, resolve, reject, heldLockSet);
       }
     });
   }
@@ -265,10 +283,16 @@ export class WebLocks {
     request: LockInfo,
     cb: any,
     resolve: (value?: unknown) => void,
+    reject: (value?: unknown) => void,
     currentHeldLockSet?: LocksInfo
   ) {
     this._pushToHeldLockSet(request, currentHeldLockSet);
-    const result = await cb({ name: request.name, mode: request.mode });
+    let result;
+    try {
+      result = await cb({ name: request.name, mode: request.mode });
+    } catch (error) {
+      reject(error);
+    }
     this._updateHeldAndRequestLocks(request);
     resolve(result);
   }
@@ -290,7 +314,8 @@ export class WebLocks {
   private _handleNewLockRequest(
     request: LockInfo,
     cb: (Lock: Lock) => any,
-    resolve: (value?: unknown) => void
+    resolve: (value?: unknown) => void,
+    reject: (value?: unknown) => void
   ) {
     this._pushToLockRequestQueueMap(request);
     let heldLockWIP = false;
@@ -300,7 +325,12 @@ export class WebLocks {
         this._heldLockSet().some((e) => e.uuid === request.uuid)
       ) {
         heldLockWIP = true;
-        const result = await cb({ name: request.name, mode: request.mode });
+        let result;
+        try {
+          result = await cb({ name: request.name, mode: request.mode });
+        } catch (error) {
+          reject(error);
+        }
         if (request.mode === LOCK_MODE.EXCLUSIVE) {
           this._updateHeldAndRequestLocks(request);
         } else if (request.mode === LOCK_MODE.SHARED) {
