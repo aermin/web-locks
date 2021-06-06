@@ -1,5 +1,4 @@
-import { WebLocks } from "../src";
-import beforeEachHandle from "./beforeEachHandle";
+import { beforeEachHandle, createWebLocksInstance } from "./helpers";
 
 describe("test suite of Web Locks API: mode-shared", () => {
   beforeEachHandle();
@@ -11,7 +10,7 @@ describe("test suite of Web Locks API: mode-shared", () => {
         granted.push(n);
       };
     }
-    const webLocks = new WebLocks();
+    const webLocks = createWebLocksInstance();
     window.localStorage.removeItem("heldLockSet");
 
     await Promise.all([
@@ -27,7 +26,7 @@ describe("test suite of Web Locks API: mode-shared", () => {
   });
 
   test("Shared locks are not exclusive", async () => {
-    const webLocks = new WebLocks();
+    const webLocks = createWebLocksInstance();
 
     let a_acquired = false,
       a_acquired_again = false;

@@ -41,11 +41,13 @@ interface LockManagerSnapshot {
   pending: LocksInfo;
 }
 
+export function generateRandomId() {
+  return `${new Date().getTime()}-${String(Math.random()).substring(2)}`;
+}
+
 export class WebLocks {
   public defaultOptions: LockOptions;
-  private _clientId = `${new Date().getTime()}-${String(
-    Math.random()
-  ).substring(2)}`;
+  private _clientId = generateRandomId();
 
   constructor() {
     const controller = new AbortController();
@@ -140,56 +142,92 @@ export class WebLocks {
   }
 
   public async request(
-    name: string,
-    callback: LockGrantedCallback
+    ...args: [name: string, callback: LockGrantedCallback]
   ): Promise<any>;
   public async request(
-    name: string,
-    options: Partial<LockOptions>,
-    callback: LockGrantedCallback
+    ...args: [
+      name: string,
+      options: Partial<LockOptions>,
+      callback: LockGrantedCallback
+    ]
   ): Promise<any>;
   public async request(
-    name: string,
-    optionsOrCallback: Partial<LockOptions> | LockGrantedCallback,
-    callback?: LockGrantedCallback
+    ...args: [
+      name: string,
+      optionsOrCallback: Partial<LockOptions> | LockGrantedCallback,
+      callback?: LockGrantedCallback
+    ]
   ) {
-    return new Promise((resolve, reject) => {
+    const self = this;
+    return new Promise(async function (resolve, reject) {
       let cb;
       let _options: LockOptions;
-      if (typeof optionsOrCallback === "function" && !callback) {
-        cb = optionsOrCallback;
-        _options = this.defaultOptions;
-      } else if (optionsOrCallback?.constructor.name === "Object" && callback) {
-        cb = callback;
-        _options = { ...this.defaultOptions, ...optionsOrCallback };
+      const argsLength = args.length;
+      if (argsLength < 2) {
+        return reject(
+          new TypeError(
+            `Failed to execute 'request' on 'LockManager': 2 arguments required, but only ${args.length} present.`
+          )
+        );
+      } else if (argsLength === 2) {
+        if (typeof args[1] !== "function") {
+          return reject(
+            new TypeError(
+              "Failed to execute 'request' on 'LockManager': parameter 2 is not of type 'Function'."
+            )
+          );
+        } else {
+          cb = args[1];
+          _options = self.defaultOptions;
+        }
       } else {
-        throw new Error("please input right options");
+        if (typeof args[2] !== "function") {
+          return reject(
+            new TypeError(
+              "Failed to execute 'request' on 'LockManager': parameter 3 is not of type 'Function'."
+            )
+          );
+        } else {
+          cb = args[2];
+          _options = { ...self.defaultOptions, ...args[1] };
+        }
       }
+      if (Object.values(LOCK_MODE).indexOf(_options.mode) < 0) {
+        return reject(
+          new TypeError(
+            `Failed to execute 'request' on 'LockManager': The provided value '${_options.mode}' is not a valid enum value of type LockMode.`
+          )
+        );
+      }
+
+      const name = args[0];
 
       const request = {
         name,
         mode: _options.mode,
-        clientId: this._clientId,
-        uuid: `${name}-${new Date().getTime()}-${String(
-          Math.random()
-        ).substring(2)}`,
+        clientId: self._clientId,
+        uuid: `${name}-${generateRandomId()}`,
       };
 
-      let heldLockSet = this._heldLockSet();
+      let heldLockSet = self._heldLockSet();
       let heldLock = heldLockSet.find((e) => {
         return e.name === name;
       });
-      const requestLockQueue = this._requestLockQueueMap()[request.name] || [];
+      const requestLockQueue = self._requestLockQueueMap()[request.name] || [];
 
       if (_options.steal) {
         if (_options.mode !== LOCK_MODE.EXCLUSIVE) {
-          throw new DOMException(
-            "Failed to execute 'request' on 'LockManager': The 'steal' option may only be used with 'exclusive' locks."
+          return reject(
+            new DOMException(
+              "Failed to execute 'request' on 'LockManager': The 'steal' option may only be used with 'exclusive' locks."
+            )
           );
         }
         if (_options.ifAvailable) {
-          throw new DOMException(
-            "Failed to execute 'request' on 'LockManager': The 'steal' and 'ifAvailable' options cannot be used together."
+          return reject(
+            new DOMException(
+              "Failed to execute 'request' on 'LockManager': The 'steal' and 'ifAvailable' options cannot be used together."
+            )
           );
         }
         heldLockSet = heldLockSet.filter((e) => e.name !== request.name);
@@ -198,9 +236,14 @@ export class WebLocks {
         });
       } else if (_options.ifAvailable) {
         if (heldLock || requestLockQueue.length) {
-          return resolve(cb(null));
+          try {
+            const result = await cb(null);
+            return resolve(result);
+          } catch (error) {
+            return reject(error);
+          }
         } else {
-          return this._handleNewHeldLock(request, cb, resolve);
+          return self._handleNewHeldLock(request, cb, resolve, reject);
         }
       } else if (_options.signal) {
         if (_options.signal.aborted) {
@@ -211,27 +254,27 @@ export class WebLocks {
           );
         } else {
           _options.signal.onabort = () => {
-            throw new DOMException("The request was aborted.");
+            return reject(new DOMException("The request was aborted."));
           };
         }
       }
 
       if (heldLock) {
         if (heldLock.mode === LOCK_MODE.EXCLUSIVE) {
-          this._handleNewLockRequest(request, cb, resolve);
+          self._handleNewLockRequest(request, cb, resolve, reject);
         } else if (heldLock.mode === LOCK_MODE.SHARED) {
           // if this request lock is shared lock and is first request lock of this queue, then push held locks set
           if (
             request.mode === LOCK_MODE.SHARED &&
             requestLockQueue.length === 0
           ) {
-            this._handleNewHeldLock(request, cb, resolve, heldLockSet);
+            self._handleNewHeldLock(request, cb, resolve, reject, heldLockSet);
           } else {
-            this._handleNewLockRequest(request, cb, resolve);
+            self._handleNewLockRequest(request, cb, resolve, reject);
           }
         }
       } else {
-        this._handleNewHeldLock(request, cb, resolve, heldLockSet);
+        self._handleNewHeldLock(request, cb, resolve, reject, heldLockSet);
       }
     });
   }
@@ -240,10 +283,16 @@ export class WebLocks {
     request: LockInfo,
     cb: any,
     resolve: (value?: unknown) => void,
+    reject: (value?: unknown) => void,
     currentHeldLockSet?: LocksInfo
   ) {
     this._pushToHeldLockSet(request, currentHeldLockSet);
-    const result = await cb({ name: request.name, mode: request.mode });
+    let result;
+    try {
+      result = await cb({ name: request.name, mode: request.mode });
+    } catch (error) {
+      reject(error);
+    }
     this._updateHeldAndRequestLocks(request);
     resolve(result);
   }
@@ -265,7 +314,8 @@ export class WebLocks {
   private _handleNewLockRequest(
     request: LockInfo,
     cb: (Lock: Lock) => any,
-    resolve: (value?: unknown) => void
+    resolve: (value?: unknown) => void,
+    reject: (value?: unknown) => void
   ) {
     this._pushToLockRequestQueueMap(request);
     let heldLockWIP = false;
@@ -275,7 +325,12 @@ export class WebLocks {
         this._heldLockSet().some((e) => e.uuid === request.uuid)
       ) {
         heldLockWIP = true;
-        const result = await cb({ name: request.name, mode: request.mode });
+        let result;
+        try {
+          result = await cb({ name: request.name, mode: request.mode });
+        } catch (error) {
+          reject(error);
+        }
         if (request.mode === LOCK_MODE.EXCLUSIVE) {
           this._updateHeldAndRequestLocks(request);
         } else if (request.mode === LOCK_MODE.SHARED) {
