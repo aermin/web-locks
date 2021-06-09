@@ -235,7 +235,14 @@ export class WebLocks {
           return e.name === name;
         });
       } else if (_options.ifAvailable) {
-        if (heldLock || requestLockQueue.length) {
+        if (
+          (heldLock &&
+            !(
+              heldLock.mode === LOCK_MODE.SHARED &&
+              _options.mode === LOCK_MODE.SHARED
+            )) ||
+          requestLockQueue.length
+        ) {
           try {
             const result = await cb(null);
             return resolve(result);
