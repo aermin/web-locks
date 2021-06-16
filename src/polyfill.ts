@@ -18,7 +18,7 @@ interface LockOptions {
   signal: AbortSignal;
 }
 
-type Lock = {
+export type Lock = {
   mode: LockMode;
   name: string;
 };

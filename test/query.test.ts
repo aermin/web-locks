@@ -2,14 +2,15 @@ import {
   beforeEachHandle,
   createWebLocksInstance,
   generateRandomId,
+  Lock,
 } from "./helpers";
 
 // Returns an array of the modes for the locks with matching name.
-function modes(list: any[], name: string) {
+function modes(list: Lock[], name: string) {
   return list.filter((item) => item.name === name).map((item) => item.mode);
 }
 // Returns an array of the clientIds for the locks with matching name.
-function clients(list: any[], name: string) {
+function clients(list: Lock[], name: string) {
   return list.filter((item) => item.name === name).map((item) => item.clientId);
 }
 
