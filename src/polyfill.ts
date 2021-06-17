@@ -18,14 +18,14 @@ interface LockOptions {
   signal: AbortSignal;
 }
 
-type Lock = {
+export type Lock = {
   mode: LockMode;
   name: string;
 };
 
 type LockGrantedCallback = (lock?: Lock | null) => Promise<any> | any;
 
-type LockInfo = Lock & {
+export type LockInfo = Lock & {
   clientId: string;
   uuid: string;
 };
