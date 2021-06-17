@@ -163,6 +163,8 @@ export class WebLocks {
       let cb;
       let _options: LockOptions;
       const argsLength = args.length;
+
+      // handle args in different case
       if (argsLength < 2) {
         return reject(
           new TypeError(
@@ -202,6 +204,15 @@ export class WebLocks {
 
       const name = args[0];
 
+      // handle source name
+      if (name[0] === "-") {
+        return reject(
+          new DOMException(
+            "Failed to execute 'request' on 'LockManager': Names cannot start with '-'."
+          )
+        );
+      }
+
       const request = {
         name,
         mode: _options.mode,
@@ -215,6 +226,7 @@ export class WebLocks {
       });
       const requestLockQueue = self._requestLockQueueMap()[request.name] || [];
 
+      // handle request options
       if (_options.steal) {
         if (_options.mode !== LOCK_MODE.EXCLUSIVE) {
           return reject(
