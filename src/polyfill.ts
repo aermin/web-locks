@@ -25,7 +25,7 @@ export type Lock = {
 
 type LockGrantedCallback = (lock?: Lock | null) => Promise<any> | any;
 
-type LockInfo = Lock & {
+export type LockInfo = Lock & {
   clientId: string;
   uuid: string;
 };
