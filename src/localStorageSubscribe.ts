@@ -25,27 +25,23 @@ export function onStorageChange(
   key: string,
   listener: () => Promise<boolean> | boolean
 ) {
-  let needRemoveListener = false;
+  const documentListener = async function () {
+    const needRemoveListener = await listener();
+    if (needRemoveListener) {
+      document.removeEventListener(key, documentListener);
+    }
+  };
 
-  document.addEventListener(
-    key,
-    async () => {
-      needRemoveListener = await listener();
-    },
-    false
-  );
+  document.addEventListener(key, documentListener, false);
 
   const windowListener = async function (event: StorageEvent) {
     if (event.storageArea === localStorage && event.key === key) {
-      needRemoveListener = await listener();
+      const needRemoveListener = await listener();
+      if (needRemoveListener) {
+        window.removeEventListener("storage", windowListener);
+      }
     }
   };
 
   window.addEventListener("storage", windowListener, false);
-
-  // unsubscribe Listener
-  if (needRemoveListener) {
-    document.removeEventListener(key, listener);
-    window.removeEventListener("storage", windowListener);
-  }
 }
