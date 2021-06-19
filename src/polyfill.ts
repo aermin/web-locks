@@ -214,6 +214,7 @@ export class WebLocks {
       const resolveWithCB = async (args: Lock | null) => {
         try {
           if (_options.signal !== undefined) {
+            // handle Synchronously signaled abort, let cb executed in next Macro task
             setTimeout(
               async (aborted: boolean) => {
                 if (aborted) {
@@ -294,7 +295,7 @@ export class WebLocks {
           );
         } else {
           _options.signal.onabort = () => {
-            // clean the lock
+            // clean the lock request when it is aborted
             const _requestLockQueueMap = self._requestLockQueueMap();
             const requestLockIndex = _requestLockQueueMap[name].findIndex(
               (lock) => lock.uuid === request.uuid
