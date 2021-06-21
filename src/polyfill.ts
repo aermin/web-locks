@@ -211,27 +211,19 @@ export class WebLocks {
         );
       }
 
-      const resolveWithCB = async (args: Lock | null) => {
-        try {
-          if (_options.signal !== undefined) {
-            // handle Synchronously signaled abort, let cb executed in next Macro task
-            setTimeout(
-              async (aborted: boolean) => {
-                if (aborted) {
-                  return reject(new DOMException("The request was aborted."));
-                } else {
-                  return resolve(await cb(args));
-                }
-              },
-              0,
-              _options.signal.aborted
-            );
-          } else {
-            return resolve(await cb(args));
-          }
-        } catch (error) {
-          reject(error);
-        }
+      // let cb executed in Micro task
+      const resolveWithCB = (args: Lock | null) => {
+        return new Promise((_resolve) => {
+          new Promise((res) => res("")).then(async () => {
+            try {
+              const res = await cb(args);
+              _resolve(res);
+              resolve(res);
+            } catch (error) {
+              reject(error);
+            }
+          });
+        });
       };
 
       const request = {
@@ -265,14 +257,14 @@ export class WebLocks {
         }
         heldLockSet = heldLockSet.filter((e) => e.name !== request.name);
         heldLock = heldLockSet.find((e) => {
-          return e.name === name;
+          return e.name === request.name;
         });
       } else if (_options.ifAvailable === true) {
         if (
           (heldLock &&
             !(
               heldLock.mode === LOCK_MODE.SHARED &&
-              _options.mode === LOCK_MODE.SHARED
+              request.mode === LOCK_MODE.SHARED
             )) ||
           requestLockQueue.length
         ) {
@@ -330,12 +322,13 @@ export class WebLocks {
 
   private async _handleNewHeldLock(
     request: LockInfo,
-    resolveWithCB: (args: Lock | null) => Promise<void>,
+    resolveWithCB: (args: Lock | null) => Promise<unknown>,
     currentHeldLockSet?: LocksInfo
   ) {
     this._pushToHeldLockSet(request, currentHeldLockSet);
-    await resolveWithCB({ name: request.name, mode: request.mode });
-    this._updateHeldAndRequestLocks(request);
+    resolveWithCB({ name: request.name, mode: request.mode }).then(() =>
+      this._updateHeldAndRequestLocks(request)
+    );
   }
 
   private _storeHeldLockSet(heldLockSet: LocksInfo) {
@@ -354,7 +347,7 @@ export class WebLocks {
 
   private _handleNewLockRequest(
     request: LockInfo,
-    resolveWithCB: (args: Lock | null) => Promise<void>
+    resolveWithCB: (args: Lock | null) => Promise<unknown>
   ) {
     this._pushToLockRequestQueueMap(request);
     let heldLockWIP = false;
