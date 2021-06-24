@@ -30,6 +30,13 @@ export type LockInfo = Lock & {
   uuid: string;
 };
 
+type Request = LockInfo & {
+  resolve: (value?: unknown) => void;
+  reject: (reason?: any) => void;
+  cbResolve?: (value?: unknown) => void;
+  cbReject?: (reason?: any) => void;
+};
+
 type LocksInfo = LockInfo[];
 
 interface RequestQueueMap {
@@ -71,7 +78,7 @@ export class WebLocks {
   }
 
   // delete old held lock and add move first request Lock to held lock set
-  private _updateHeldAndRequestLocks(request: LockInfo) {
+  private _updateHeldAndRequestLocks(request: Request) {
     let heldLockSet = this._heldLockSet();
     const heldLockIndex = heldLockSet.findIndex(
       (lock) => lock.uuid === request.uuid
@@ -121,7 +128,7 @@ export class WebLocks {
     this._onUnload();
   }
 
-  private _pushToLockRequestQueueMap(request: LockInfo) {
+  private _pushToLockRequestQueueMap(request: Request) {
     const requestQueueMap = this._requestLockQueueMap();
     const requestQueue = requestQueueMap[request.name] || [];
     requestQueueMap[request.name] = [...requestQueue, request];
@@ -131,7 +138,7 @@ export class WebLocks {
   }
 
   private _pushToHeldLockSet(
-    request: LockInfo,
+    request: Request,
     currentHeldLockSet = this._heldLockSet()
   ) {
     const heldLockSet = [...currentHeldLockSet, request];
@@ -211,9 +218,20 @@ export class WebLocks {
         );
       }
 
+      const request: Request = {
+        name,
+        mode: _options.mode,
+        clientId: self._clientId,
+        uuid: `${name}-${generateRandomId()}`,
+        resolve,
+        reject,
+      };
+
       // let cb executed in Micro task
       const resolveWithCB = (args: Lock | null) => {
-        return new Promise((_resolve) => {
+        return new Promise((_resolve, _reject) => {
+          request.cbResolve = _resolve;
+          request.cbReject = _reject;
           new Promise((res) => res("")).then(async () => {
             try {
               const res = await cb(args);
@@ -224,13 +242,6 @@ export class WebLocks {
             }
           });
         });
-      };
-
-      const request = {
-        name,
-        mode: _options.mode,
-        clientId: self._clientId,
-        uuid: `${name}-${generateRandomId()}`,
       };
 
       let heldLockSet = self._heldLockSet();
@@ -255,6 +266,7 @@ export class WebLocks {
             )
           );
         }
+        // one held lock or multiple shared locks of this source should be remove
         heldLockSet = heldLockSet.filter((e) => e.name !== request.name);
         heldLock = heldLockSet.find((e) => {
           return e.name === request.name;
@@ -321,13 +333,40 @@ export class WebLocks {
   }
 
   private async _handleNewHeldLock(
-    request: LockInfo,
+    request: Request,
     resolveWithCB: (args: Lock | null) => Promise<unknown>,
     currentHeldLockSet?: LocksInfo
   ) {
     this._pushToHeldLockSet(request, currentHeldLockSet);
-    resolveWithCB({ name: request.name, mode: request.mode }).then(() =>
-      this._updateHeldAndRequestLocks(request)
+
+    // check and handle if this held lock has been steal
+    let callBackResolved = false;
+    let rejectedForSteal = false;
+    const listener = () => {
+      if (
+        !callBackResolved &&
+        !rejectedForSteal &&
+        !this._isInHeldLockSet(request.uuid)
+      ) {
+        this._handleHeldLockBeSteal(request);
+        rejectedForSteal = true;
+        return true;
+      }
+      return false;
+    };
+    onStorageChange(STORAGE_KEYS.HELD_LOCK_SET, listener);
+
+    resolveWithCB({ name: request.name, mode: request.mode }).then(() => {
+      callBackResolved = true;
+      this._updateHeldAndRequestLocks(request);
+    });
+  }
+
+  private _handleHeldLockBeSteal(request: Request) {
+    request.reject(
+      new DOMException(
+        " Lock broken by another request with the 'steal' option."
+      )
     );
   }
 
@@ -345,19 +384,26 @@ export class WebLocks {
     );
   }
 
+  private _isInHeldLockSet(uuid: string) {
+    return this._heldLockSet().some((e) => e.uuid === uuid);
+  }
+
   private _handleNewLockRequest(
-    request: LockInfo,
+    request: Request,
     resolveWithCB: (args: Lock | null) => Promise<unknown>
   ) {
     this._pushToLockRequestQueueMap(request);
     let heldLockWIP = false;
     const listener = async () => {
-      if (
-        !heldLockWIP &&
-        this._heldLockSet().some((e) => e.uuid === request.uuid)
-      ) {
+      if (!heldLockWIP && this._isInHeldLockSet(request.uuid)) {
         heldLockWIP = true;
         await resolveWithCB({ name: request.name, mode: request.mode });
+
+        // check and handle if this held lock has been steal
+        if (!this._isInHeldLockSet(request.uuid)) {
+          this._handleHeldLockBeSteal(request);
+        }
+
         if (request.mode === LOCK_MODE.EXCLUSIVE) {
           this._updateHeldAndRequestLocks(request);
         } else if (request.mode === LOCK_MODE.SHARED) {
