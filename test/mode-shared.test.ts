@@ -1,6 +1,6 @@
 import { beforeEachHandle, createWebLocksInstance } from "./helpers";
 
-describe("test suite of Web Locks API: mode-shared", () => {
+describe("Web Locks API: mode-shared", () => {
   beforeEachHandle();
 
   test("Lock requests are granted in order", async () => {
