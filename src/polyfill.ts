@@ -1,4 +1,8 @@
-import { onLocalStorageInit, onStorageChange } from "./localStorageSubscribe";
+import {
+  onStorageChange,
+  getStorageItem,
+  setStorageItem,
+} from "./localStorageSubscribe";
 
 const LOCK_MODE = {
   EXCLUSIVE: "exclusive",
@@ -37,13 +41,13 @@ type Request = LockInfo & {
   cbReject?: (reason?: any) => void;
 };
 
-type LocksInfo = LockInfo[];
+export type LocksInfo = LockInfo[];
 
 interface RequestQueueMap {
   [key: string]: LocksInfo;
 }
 
-interface LockManagerSnapshot {
+export interface LockManagerSnapshot {
   held: LocksInfo;
   pending: LocksInfo;
 }
@@ -52,12 +56,12 @@ export function generateRandomId() {
   return `${new Date().getTime()}-${String(Math.random()).substring(2)}`;
 }
 
-export class WebLocks {
-  public defaultOptions: LockOptions;
+export class LockManager {
+  private _defaultOptions: LockOptions;
   private _clientId = generateRandomId();
 
   constructor() {
-    this.defaultOptions = {
+    this._defaultOptions = {
       mode: LOCK_MODE.EXCLUSIVE,
       ifAvailable: false,
       steal: false,
@@ -66,14 +70,12 @@ export class WebLocks {
   }
 
   private _requestLockQueueMap(): RequestQueueMap {
-    const requestQueueMap = window.localStorage.getItem(
-      STORAGE_KEYS.REQUEST_QUEUE_MAP
-    );
+    const requestQueueMap = getStorageItem(STORAGE_KEYS.REQUEST_QUEUE_MAP);
     return (requestQueueMap && JSON.parse(requestQueueMap)) || {};
   }
 
   private _heldLockSet(): LocksInfo {
-    const heldLockSet = window.localStorage.getItem(STORAGE_KEYS.HELD_LOCK_SET);
+    const heldLockSet = getStorageItem(STORAGE_KEYS.HELD_LOCK_SET);
     return (heldLockSet && JSON.parse(heldLockSet)) || [];
   }
 
@@ -124,7 +126,6 @@ export class WebLocks {
   }
 
   private _init() {
-    onLocalStorageInit();
     this._onUnload();
   }
 
@@ -185,7 +186,7 @@ export class WebLocks {
           );
         } else {
           cb = args[1];
-          _options = self.defaultOptions;
+          _options = self._defaultOptions;
         }
       } else {
         if (typeof args[2] !== "function") {
@@ -196,7 +197,7 @@ export class WebLocks {
           );
         } else {
           cb = args[2];
-          _options = { ...self.defaultOptions, ...args[1] };
+          _options = { ...self._defaultOptions, ...args[1] };
         }
       }
       if (Object.values(LOCK_MODE).indexOf(_options.mode) < 0) {
@@ -394,20 +395,17 @@ export class WebLocks {
   private _handleHeldLockBeSteal(request: Request) {
     request.reject(
       new DOMException(
-        " Lock broken by another request with the 'steal' option."
+        "Lock broken by another request with the 'steal' option."
       )
     );
   }
 
   private _storeHeldLockSet(heldLockSet: LocksInfo) {
-    window.localStorage.setItem(
-      STORAGE_KEYS.HELD_LOCK_SET,
-      JSON.stringify(heldLockSet)
-    );
+    setStorageItem(STORAGE_KEYS.HELD_LOCK_SET, JSON.stringify(heldLockSet));
   }
 
   private _storeRequestLockQueueMap(requestLockQueueMap: RequestQueueMap) {
-    window.localStorage.setItem(
+    setStorageItem(
       STORAGE_KEYS.REQUEST_QUEUE_MAP,
       JSON.stringify(requestLockQueueMap)
     );
@@ -570,9 +568,7 @@ export class WebLocks {
     for (const sourceName in requestLockQueueMap) {
       const requestLockQueue = requestLockQueueMap[sourceName];
       requestLockQueueMap[sourceName] = requestLockQueue.filter(
-        (requestLock) => {
-          requestLock.clientId !== this._clientId;
-        }
+        (requestLock) => requestLock.clientId !== this._clientId
       );
     }
   }

@@ -1,5 +1,4 @@
-import { dispatchEvent } from "../src/localStorageSubscribe";
-import { WebLocks } from "../src/polyfill";
+import { LockManager } from "../src/polyfill";
 
 export * from "../src/polyfill";
 
@@ -9,14 +8,13 @@ export function beforeEachHandle() {
   beforeEach(() => {
     global.Storage.prototype.setItem = jest.fn((key, value) => {
       mockFridge[key] = value;
-      dispatchEvent(key, value);
     });
     global.Storage.prototype.getItem = jest.fn((key) => mockFridge[key]);
   });
 }
 
 export function createWebLocksInstance() {
-  const webLocks = new WebLocks();
+  const webLocks = new LockManager();
   window.localStorage.removeItem("heldLockSet");
   return webLocks;
 }

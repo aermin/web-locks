@@ -11,14 +11,13 @@ export function dispatchEvent(key: string, value: string) {
   document.dispatchEvent(event);
 }
 
-export function onLocalStorageInit() {
-  const originalSetItem = localStorage.setItem;
+export function setStorageItem(key: string, value: string) {
+  window.localStorage.setItem(key, value);
+  dispatchEvent(key, value);
+}
 
-  localStorage.setItem = function (key, value) {
-    originalSetItem.apply(this, [key, value]);
-
-    dispatchEvent(key, value);
-  };
+export function getStorageItem(key: string) {
+  return window.localStorage.getItem(key);
 }
 
 export function onStorageChange(
