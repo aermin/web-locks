@@ -2,6 +2,12 @@
 
 A polyfill of [Web Locks API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Locks_API) with localstorage, support the mainstream browsers usage
 
+- implement features according to [Web Locks API Specification](https://wicg.github.io/web-locks/)
+
+- implement the unit test according to [web-platform-test](https://github.com/web-platform-tests/wpt/tree/master/web-locks)
+
+- implement all the features of [Web Locks API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Locks_API)
+
 ## usage:
 
 install this lib
@@ -23,6 +29,12 @@ locks.request("my_resource", async (lock) => {
 });
 ```
 
+## online demo
+
+[demo link](https://codesandbox.io/s/web-locks-demo-ytqq5?file=/src/pollfill/polyfill.ts)
+
+> you could open this url in two tabs, operate the lock buttons and see the page and console
+
 ## process:
 
 - [x] lock.request
@@ -36,4 +48,4 @@ locks.request("my_resource", async (lock) => {
 
 - [x] CI/CD
 
-- [ ] UT/IT
+- [x] UT/IT

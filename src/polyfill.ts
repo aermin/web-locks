@@ -548,9 +548,11 @@ export class LockManager {
             newHeldLockSet.push(firstRequestLock);
             requestLockQueueMap[element.name] = restRequestLocks;
           } else if (firstRequestLock.mode === LOCK_MODE.SHARED) {
-            const nonSharedLockIndex = requestLockQueue.findIndex(
+            let nonSharedLockIndex = requestLockQueue.findIndex(
               (lock) => lock.mode !== LOCK_MODE.SHARED
             );
+            if (nonSharedLockIndex === -1)
+              nonSharedLockIndex = requestLockQueue.length;
             newHeldLockSet = [
               ...newHeldLockSet,
               ...requestLockQueue.splice(0, nonSharedLockIndex),
