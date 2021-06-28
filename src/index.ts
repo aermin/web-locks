@@ -1,19 +1,27 @@
-import { WebLocks } from "./polyfill";
+import {
+  LockManager,
+  LockInfo,
+  LocksInfo,
+  Lock,
+  LockManagerSnapshot,
+} from "./polyfill";
 
 const locks = (function () {
-  const navigator = window?.navigator as Navigator & { locks: WebLocks };
-  // if (!window?.navigator?.locks || true) {
+  const navigator = window?.navigator as Navigator & { locks: LockManager };
   if (!navigator?.locks) {
-    const webLocks = new WebLocks();
-    // TODO: follow navigator properties setting of native browser
-    Object.defineProperty(window, "navigator", {
-      value: {
-        locks: webLocks,
-      },
-      writable: true,
+    const lockManager = new LockManager();
+    Object.defineProperty(navigator, "locks", {
+      value: lockManager,
     });
   }
   return navigator?.locks;
 })();
 
-export { WebLocks, locks as default };
+export {
+  LockManager,
+  locks as default,
+  LockInfo,
+  LocksInfo,
+  Lock,
+  LockManagerSnapshot,
+};
