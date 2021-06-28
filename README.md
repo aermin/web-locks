@@ -48,4 +48,4 @@ locks.request("my_resource", async (lock) => {
 
 - [x] CI/CD
 
-- [x] UT/IT
+- [x] Unit test
