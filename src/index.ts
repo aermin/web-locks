@@ -8,13 +8,14 @@ import {
 
 const locks = (function () {
   const navigator = window?.navigator as Navigator & { locks: LockManager };
-  if (!navigator?.locks) {
-    const lockManager = new LockManager();
-    Object.defineProperty(navigator, "locks", {
-      value: lockManager,
-    });
+  if (navigator) {
+    if (!navigator.locks) {
+      const lockManager = new LockManager();
+      Object.defineProperty(navigator, "locks", {
+        value: lockManager,
+      });
+    }
   }
-  return navigator?.locks;
 })();
 
 export {
