@@ -1,7 +1,7 @@
 {
   "name": "navigator.locks",
   "description": "support Web Locks API work in major browsers",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "main": "dist/index.cjs.js",
   "unpkg": "dist/index.umd.js",
   "types": "dist/index.d.ts",
