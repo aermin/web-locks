@@ -1,6 +1,6 @@
 # web-locks
 
-a [Web Locks API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Locks_API) polyfill, support the mainstream browsers usage when `navigator` exist but `navigator.lock` not exist.
+a [Web Locks API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Locks_API) polyfill, support the mainstream browsers usage when `window.navigator` exist but `navigator.lock` not exist.
 
 - implement features according to [Web Locks API Specification](https://wicg.github.io/web-locks/)
 
