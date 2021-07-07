@@ -1,12 +1,6 @@
-import {
-  LockManager,
-  LockInfo,
-  LocksInfo,
-  Lock,
-  LockManagerSnapshot,
-} from "./polyfill";
+import { LockManager } from "./polyfill";
 
-const locks = (function () {
+(function () {
   if (typeof window !== "undefined") {
     const navigator = window.navigator as Navigator & { locks: LockManager };
     if (navigator && !navigator.locks) {
@@ -17,12 +11,3 @@ const locks = (function () {
     }
   }
 })();
-
-export {
-  LockManager,
-  locks as default,
-  LockInfo,
-  LocksInfo,
-  Lock,
-  LockManagerSnapshot,
-};
