@@ -1,6 +1,6 @@
 # web-locks
 
-A polyfill of [Web Locks API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Locks_API) with localstorage, support the mainstream browsers usage
+a [Web Locks API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Locks_API) polyfill, support the mainstream browsers usage when `window.navigator` exist but `navigator.lock` not exist.
 
 - implement features according to [Web Locks API Specification](https://wicg.github.io/web-locks/)
 
@@ -19,14 +19,25 @@ npm i navigator.locks
 import this lib and use it follow [Web Locks API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Locks_API)
 
 ```js
-import locks from "navigator.locks";
+import "navigator.locks";
 
-locks.request("my_resource", async (lock) => {
+navigator.locks.request("my_resource", async (lock) => {
   // The lock has been acquired.
   await do_something();
   await do_something_else();
   // Now the lock will be released.
 });
+```
+
+```ts
+// if you use ts, could import these types
+import type {
+  Lock,
+  LockInfo,
+  LockManager,
+  LockManagerSnapshot,
+  LocksInfo,
+} from "navigator.locks";
 ```
 
 ## online demo
