@@ -1,4 +1,10 @@
-import { LockManager } from "./polyfill";
+import {
+  Lock,
+  LockInfo,
+  LockManager,
+  LockManagerSnapshot,
+  LocksInfo,
+} from "./polyfill";
 
 (function () {
   if (typeof window !== "undefined") {
@@ -11,3 +17,5 @@ import { LockManager } from "./polyfill";
     }
   }
 })();
+
+export type { Lock, LockInfo, LockManager, LockManagerSnapshot, LocksInfo };

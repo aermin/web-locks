@@ -29,6 +29,17 @@ navigator.locks.request("my_resource", async (lock) => {
 });
 ```
 
+```ts
+// if you use ts, could import these types
+import type {
+  Lock,
+  LockInfo,
+  LockManager,
+  LockManagerSnapshot,
+  LocksInfo,
+} from "navigator.locks";
+```
+
 ## online demo
 
 [demo link](https://codesandbox.io/s/web-locks-demo-ytqq5?file=/src/pollfill/polyfill.ts)
