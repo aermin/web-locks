@@ -7,9 +7,9 @@ import {
 } from "./polyfill";
 
 const locks = (function () {
-  const navigator = window?.navigator as Navigator & { locks: LockManager };
-  if (navigator) {
-    if (!navigator.locks) {
+  if (typeof window !== "undefined") {
+    const navigator = window.navigator as Navigator & { locks: LockManager };
+    if (navigator && !navigator.locks) {
       const lockManager = new LockManager();
       Object.defineProperty(navigator, "locks", {
         value: lockManager,
