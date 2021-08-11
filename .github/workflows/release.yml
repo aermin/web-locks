@@ -1,4 +1,4 @@
-name: release Package
+name: release
 
 on:
   release:

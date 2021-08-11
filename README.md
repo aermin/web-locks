@@ -1,6 +1,15 @@
-# web-locks
+<h2 align="center">web-locks polyfill</h2>
 
-a [Web Locks API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Locks_API) polyfill, support the mainstream browsers usage when `window.navigator` exist but `navigator.lock` not exist.
+<h3 align="center">
+
+![push workflow](https://github.com/aermin/web-locks/actions/workflows/push.yml/badge.svg)
+![release workflow](https://github.com/aermin/web-locks/actions/workflows/release.yml/badge.svg)
+![npm](https://img.shields.io/npm/v/navigator.locks)
+![license](https://img.shields.io/github/license/aermin/web-locks)
+
+</h3>
+
+a [Web Locks API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Locks_API) polyfill, work for the browsers which haven't support web lock API: `navigator.lock`, e.g. `Firefox`, `Safari`, `IE`.
 
 - implement features according to [Web Locks API Specification](https://wicg.github.io/web-locks/)
 
@@ -8,7 +17,7 @@ a [Web Locks API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Locks_API
 
 - implement all the features of [Web Locks API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Locks_API)
 
-## usage:
+## Usage:
 
 install this lib
 
@@ -30,33 +39,32 @@ navigator.locks.request("my_resource", async (lock) => {
 ```
 
 ```ts
-// if you use ts, could import these types
+// if you use Typescript, could import these types to use
 import type {
+  LockManager,
   Lock,
   LockInfo,
-  LockManager,
   LockManagerSnapshot,
   LocksInfo,
 } from "navigator.locks";
 ```
 
-## online demo
+## Online demo
 
 [demo link](https://codesandbox.io/s/web-locks-demo-ytqq5?file=/src/pollfill/polyfill.ts)
 
-> you could open this url in two tabs, operate the lock buttons and see the page and console
+> you could open this URL in two tabs, operate the lock buttons and see the page and console
 
-## process:
+## Process
 
-- [x] lock.request
+### API ✅
 
-  - [x] lock.request option -> `mode`
-  - [x] lock.request option -> `ifAvailable `
-  - [x] lock.request option -> `steal`
-  - [x] lock.request option -> `1signal`
+- lock.request
 
-- [x] lock.query
+- lock.request options: `mode` | `ifAvailable ` | `steal` | `signal`
 
-- [x] CI/CD
+- lock.query
 
-- [x] Unit test
+### CI/CD ✅
+
+### Unit test✅
