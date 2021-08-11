@@ -59,12 +59,14 @@ import type {
 
 ### API ✅
 
-- lock.request
+- navigator.locks.request
 
-- lock.request options: `mode` | `ifAvailable ` | `steal` | `signal`
+- navigator.locks.request options:
+ 
+  `mode` | `ifAvailable ` | `steal` | `signal`
 
-- lock.query
+- navigator.locks.query
 
 ### CI/CD ✅
 
-### Unit test✅
+### Unit test ✅
