@@ -495,7 +495,7 @@ export class LockManager {
     this._storeRequestLockQueueMap(requestLockQueueMap);
   }
 
-  public query() {
+  public async query() {
     const queryResult: LockManagerSnapshot = {
       held: this._heldLockSet(),
       pending: [],
@@ -513,9 +513,8 @@ export class LockManager {
       const requestLockQueueMap = this._requestLockQueueMap();
       this._filterLockQueueMap(requestLockQueueMap);
 
-      let newHeldLockSet: LocksInfo = this._cleanThisClientLockAndRequests(
-        requestLockQueueMap
-      );
+      let newHeldLockSet: LocksInfo =
+        this._cleanThisClientLockAndRequests(requestLockQueueMap);
 
       this._storeHeldLockSetAndRequestLockQueueMap(
         newHeldLockSet,
