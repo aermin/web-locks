@@ -1,7 +1,9 @@
+import { HeartBeat } from "./heartBeat";
 import {
   onStorageChange,
   getStorageItem,
   setStorageItem,
+  removeStorageItem,
 } from "./localStorageSubscribe";
 
 const LOCK_MODE = {
@@ -58,7 +60,7 @@ export function generateRandomId() {
 
 export class LockManager {
   private _defaultOptions: LockOptions;
-  private _clientId = generateRandomId();
+  private _clientId: string;
 
   constructor() {
     this._defaultOptions = {
@@ -66,6 +68,7 @@ export class LockManager {
       ifAvailable: false,
       steal: false,
     };
+    this._clientId = generateRandomId();
     this._init();
   }
 
@@ -126,6 +129,9 @@ export class LockManager {
   }
 
   private _init() {
+    const heartBeat = new HeartBeat({ key: this._clientId });
+    heartBeat.start();
+    this._cleanUnliveClientLocks();
     this._onUnload();
   }
 
@@ -207,6 +213,7 @@ export class LockManager {
           )
         );
       }
+      self._cleanUnliveClientLocks();
 
       const name = args[0];
 
@@ -495,7 +502,7 @@ export class LockManager {
     this._storeRequestLockQueueMap(requestLockQueueMap);
   }
 
-  public async query() {
+  private _query() {
     const queryResult: LockManagerSnapshot = {
       held: this._heldLockSet(),
       pending: [],
@@ -508,35 +515,43 @@ export class LockManager {
     return queryResult;
   }
 
+  // add async for align with native api and type
+  public async query() {
+    return this._query();
+  }
+
   private _onUnload() {
     window.addEventListener("unload", (e) => {
-      const requestLockQueueMap = this._requestLockQueueMap();
-      this._filterLockQueueMap(requestLockQueueMap);
-
-      let newHeldLockSet: LocksInfo =
-        this._cleanThisClientLockAndRequests(requestLockQueueMap);
-
-      this._storeHeldLockSetAndRequestLockQueueMap(
-        newHeldLockSet,
-        requestLockQueueMap
-      );
+      this._cleanClientLocksByClientId(this._clientId);
     });
   }
 
+  private _cleanClientLocksByClientId(clientId: string) {
+    const requestLockQueueMap = this._requestLockQueueMap();
+    this._cleanRequestLockQueueByClientId(requestLockQueueMap, clientId);
+
+    let newHeldLockSet: LocksInfo = this._cleanThisClientLockAndRequests(
+      requestLockQueueMap,
+      clientId
+    );
+
+    this._storeHeldLockSetAndRequestLockQueueMap(
+      newHeldLockSet,
+      requestLockQueueMap
+    );
+  }
+
   private _cleanThisClientLockAndRequests(
-    requestLockQueueMap: RequestQueueMap
+    requestLockQueueMap: RequestQueueMap,
+    clientId: string
   ) {
     const heldLockSet = this._heldLockSet();
-    const removedHeldLockSet: LocksInfo = [];
-
     let newHeldLockSet: LocksInfo = [];
 
     heldLockSet.forEach((element) => {
-      if (element.clientId !== this._clientId) {
+      if (element.clientId !== clientId) {
         newHeldLockSet.push(element);
       } else {
-        removedHeldLockSet.push(element);
-
         const requestLockQueue = requestLockQueueMap[element.name];
         const [firstRequestLock, ...restRequestLocks] = requestLockQueue;
         if (firstRequestLock) {
@@ -565,12 +580,32 @@ export class LockManager {
     return newHeldLockSet;
   }
 
-  private _filterLockQueueMap(requestLockQueueMap: RequestQueueMap) {
+  private _cleanRequestLockQueueByClientId(
+    requestLockQueueMap: RequestQueueMap,
+    clientId: string
+  ) {
     for (const sourceName in requestLockQueueMap) {
       const requestLockQueue = requestLockQueueMap[sourceName];
       requestLockQueueMap[sourceName] = requestLockQueue.filter(
-        (requestLock) => requestLock.clientId !== this._clientId
+        (requestLock) => requestLock.clientId !== clientId
       );
     }
+  }
+
+  private _cleanUnliveClientLocks() {
+    const { held, pending } = this._query();
+    const allClientIds = [...held, ...pending].reduce((pre, cur) => {
+      pre.push(cur.clientId);
+      return pre;
+    }, [] as string[]);
+    const uniqueClientIds = [...new Set(allClientIds)];
+    uniqueClientIds.forEach((clientId) => {
+      const timeStamp = getStorageItem(clientId);
+      // if unlive
+      if (timeStamp && Date.now() - Number(timeStamp) > 2100) {
+        removeStorageItem(timeStamp);
+        this._cleanClientLocksByClientId(clientId);
+      }
+    });
   }
 }

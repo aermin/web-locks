@@ -20,6 +20,10 @@ export function getStorageItem(key: string) {
   return window.localStorage.getItem(key);
 }
 
+export function removeStorageItem(key: string) {
+  return window.localStorage.removeItem(key);
+}
+
 export function onStorageChange(
   key: string,
   listener: () => Promise<boolean> | boolean
