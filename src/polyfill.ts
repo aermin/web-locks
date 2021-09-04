@@ -43,6 +43,20 @@ type Request = LockInfo & {
   cbReject?: (reason?: any) => void;
 };
 
+type RequestArgsCase1 = [name: string, callback: LockGrantedCallback];
+
+type RequestArgsCase2 = [
+  name: string,
+  options: Partial<LockOptions>,
+  callback: LockGrantedCallback
+];
+
+type RequestArgsCase3 = [
+  name: string,
+  optionsOrCallback: Partial<LockOptions> | LockGrantedCallback,
+  callback?: LockGrantedCallback
+];
+
 export type LocksInfo = LockInfo[];
 
 interface RequestQueueMap {
@@ -70,6 +84,100 @@ export class LockManager {
     };
     this._clientId = generateRandomId();
     this._init();
+  }
+
+  private _init() {
+    const heartBeat = new HeartBeat({ key: this._clientId });
+    heartBeat.start();
+    heartBeat.detect(() => this._cleanUnliveClientLocks());
+    this._onUnload();
+  }
+
+  public async request(...args: RequestArgsCase1): Promise<any>;
+  public async request(...args: RequestArgsCase2): Promise<any>;
+  public async request(...args: RequestArgsCase3) {
+    const self = this;
+    return new Promise(async function (resolve, reject) {
+      self._cleanUnliveClientLocks();
+
+      const res = self._handleRequestArgs(args, reject);
+      if (!res) return;
+      const { cb, _options } = res;
+
+      const name = args[0];
+      const request: Request = {
+        name,
+        mode: _options.mode,
+        clientId: self._clientId,
+        uuid: `${name}-${generateRandomId()}`,
+        resolve,
+        reject,
+      };
+
+      const resolveWithCB = self._resolveWithCB(request, cb, resolve, reject);
+
+      let heldLockSet = self._heldLockSet();
+      let heldLock = heldLockSet.find((e) => {
+        return e.name === request.name;
+      });
+      const requestLockQueue = self._requestLockQueueMap()[request.name] || [];
+
+      // handle request options
+      if (_options.steal === true) {
+        if (!self._handleExceptionWhenStealIsTrue(_options, reject)) return;
+        // one held lock or multiple shared locks of this source should be remove
+        heldLockSet = heldLockSet.filter((e) => e.name !== request.name);
+        heldLock = heldLockSet.find((e) => {
+          return e.name === request.name;
+        });
+      } else if (_options.ifAvailable === true) {
+        if (
+          (heldLock &&
+            !(
+              heldLock.mode === LOCK_MODE.SHARED &&
+              request.mode === LOCK_MODE.SHARED
+            )) ||
+          requestLockQueue.length
+        ) {
+          return resolveWithCB(null);
+        } else {
+          return self._handleNewHeldLock(request, resolveWithCB);
+        }
+      } else if (_options.signal !== undefined) {
+        if (!self._handleSignalExisted(_options, reject, request)) return;
+      }
+
+      self._handleHeldLockAndRequest(
+        heldLock,
+        request,
+        resolveWithCB,
+        requestLockQueue,
+        heldLockSet
+      );
+    });
+  }
+
+  // add async for align with native api and type
+  public async query() {
+    return this._query();
+  }
+
+  private _pushToLockRequestQueueMap(request: Request) {
+    const requestQueueMap = this._requestLockQueueMap();
+    const requestQueue = requestQueueMap[request.name] || [];
+    requestQueueMap[request.name] = [...requestQueue, request];
+
+    this._storeRequestLockQueueMap(requestQueueMap);
+    return request;
+  }
+
+  private _pushToHeldLockSet(
+    request: Request,
+    currentHeldLockSet = this._heldLockSet()
+  ) {
+    const heldLockSet = [...currentHeldLockSet, request];
+    this._storeHeldLockSet(heldLockSet);
+    return request;
   }
 
   private _requestLockQueueMap(): RequestQueueMap {
@@ -128,180 +236,113 @@ export class LockManager {
     }
   }
 
-  private _init() {
-    const heartBeat = new HeartBeat({ key: this._clientId });
-    heartBeat.start();
-    heartBeat.detect(() => this._cleanUnliveClientLocks());
-    this._onUnload();
-  }
-
-  private _pushToLockRequestQueueMap(request: Request) {
-    const requestQueueMap = this._requestLockQueueMap();
-    const requestQueue = requestQueueMap[request.name] || [];
-    requestQueueMap[request.name] = [...requestQueue, request];
-
-    this._storeRequestLockQueueMap(requestQueueMap);
-    return request;
-  }
-
-  private _pushToHeldLockSet(
-    request: Request,
-    currentHeldLockSet = this._heldLockSet()
+  private _handleSignalExisted(
+    _options: LockOptions,
+    reject: (reason?: any) => void,
+    request: Request
   ) {
-    const heldLockSet = [...currentHeldLockSet, request];
-    this._storeHeldLockSet(heldLockSet);
-    return request;
-  }
-
-  public async request(
-    ...args: [name: string, callback: LockGrantedCallback]
-  ): Promise<any>;
-  public async request(
-    ...args: [
-      name: string,
-      options: Partial<LockOptions>,
-      callback: LockGrantedCallback
-    ]
-  ): Promise<any>;
-  public async request(
-    ...args: [
-      name: string,
-      optionsOrCallback: Partial<LockOptions> | LockGrantedCallback,
-      callback?: LockGrantedCallback
-    ]
-  ) {
-    const self = this;
-    return new Promise(async function (resolve, reject) {
-      let cb: LockGrantedCallback;
-      let _options: LockOptions;
-      const argsLength = args.length;
-
-      // handle args in different case
-      if (argsLength < 2) {
-        return reject(
-          new TypeError(
-            `Failed to execute 'request' on 'LockManager': 2 arguments required, but only ${args.length} present.`
-          )
-        );
-      } else if (argsLength === 2) {
-        if (typeof args[1] !== "function") {
-          return reject(
-            new TypeError(
-              "Failed to execute 'request' on 'LockManager': parameter 2 is not of type 'Function'."
-            )
-          );
-        } else {
-          cb = args[1];
-          _options = self._defaultOptions;
-        }
-      } else {
-        if (typeof args[2] !== "function") {
-          return reject(
-            new TypeError(
-              "Failed to execute 'request' on 'LockManager': parameter 3 is not of type 'Function'."
-            )
-          );
-        } else {
-          cb = args[2];
-          _options = { ...self._defaultOptions, ...args[1] };
-        }
-      }
-      if (Object.values(LOCK_MODE).indexOf(_options.mode) < 0) {
-        return reject(
-          new TypeError(
-            `Failed to execute 'request' on 'LockManager': The provided value '${_options.mode}' is not a valid enum value of type LockMode.`
-          )
-        );
-      }
-
-      const name = args[0];
-
-      // handle source name
-      if (name[0] === "-") {
-        return reject(
-          new DOMException(
-            "Failed to execute 'request' on 'LockManager': Names cannot start with '-'."
-          )
-        );
-      }
-
-      const request: Request = {
-        name,
-        mode: _options.mode,
-        clientId: self._clientId,
-        uuid: `${name}-${generateRandomId()}`,
-        resolve,
-        reject,
-      };
-
-      const resolveWithCB = self._resolveWithCB(request, cb, resolve, reject);
-
-      let heldLockSet = self._heldLockSet();
-      let heldLock = heldLockSet.find((e) => {
-        return e.name === request.name;
-      });
-      const requestLockQueue = self._requestLockQueueMap()[request.name] || [];
-
-      // handle request options
-      if (_options.steal === true) {
-        if (_options.mode !== LOCK_MODE.EXCLUSIVE) {
-          return reject(
-            new DOMException(
-              "Failed to execute 'request' on 'LockManager': The 'steal' option may only be used with 'exclusive' locks."
-            )
-          );
-        }
-        if (_options.ifAvailable === true) {
-          return reject(
-            new DOMException(
-              "Failed to execute 'request' on 'LockManager': The 'steal' and 'ifAvailable' options cannot be used together."
-            )
-          );
-        }
-        // one held lock or multiple shared locks of this source should be remove
-        heldLockSet = heldLockSet.filter((e) => e.name !== request.name);
-        heldLock = heldLockSet.find((e) => {
-          return e.name === request.name;
-        });
-      } else if (_options.ifAvailable === true) {
-        if (
-          (heldLock &&
-            !(
-              heldLock.mode === LOCK_MODE.SHARED &&
-              request.mode === LOCK_MODE.SHARED
-            )) ||
-          requestLockQueue.length
-        ) {
-          return resolveWithCB(null);
-        } else {
-          return self._handleNewHeldLock(request, resolveWithCB);
-        }
-      } else if (_options.signal !== undefined) {
-        if (!(_options.signal instanceof AbortSignal)) {
-          return reject(
-            new TypeError(
-              "Failed to execute 'request' on 'LockManager': member signal is not of type AbortSignal."
-            )
-          );
-        } else if (_options.signal.aborted) {
-          return reject(
-            new DOMException(
-              "Failed to execute 'request' on 'LockManager': The request was aborted."
-            )
-          );
-        } else {
-          self._signalOnabort(_options.signal, request);
-        }
-      }
-
-      self._handleHeldLockAndRequest(
-        heldLock,
-        request,
-        resolveWithCB,
-        requestLockQueue,
-        heldLockSet
+    if (!(_options.signal instanceof AbortSignal)) {
+      reject(
+        new TypeError(
+          "Failed to execute 'request' on 'LockManager': member signal is not of type AbortSignal."
+        )
       );
-    });
+      return false;
+    } else if (_options.signal.aborted) {
+      reject(
+        new DOMException(
+          "Failed to execute 'request' on 'LockManager': The request was aborted."
+        )
+      );
+      return false;
+    } else {
+      this._signalOnabort(_options.signal, request);
+    }
+    return true;
+  }
+
+  private _handleExceptionWhenStealIsTrue(
+    _options: LockOptions,
+    reject: (reason?: any) => void
+  ) {
+    if (_options.mode !== LOCK_MODE.EXCLUSIVE) {
+      reject(
+        new DOMException(
+          "Failed to execute 'request' on 'LockManager': The 'steal' option may only be used with 'exclusive' locks."
+        )
+      );
+      return false;
+    }
+    if (_options.ifAvailable === true) {
+      reject(
+        new DOMException(
+          "Failed to execute 'request' on 'LockManager': The 'steal' and 'ifAvailable' options cannot be used together."
+        )
+      );
+      return false;
+    }
+    return true;
+  }
+
+  private _handleRequestArgs(
+    args: RequestArgsCase1 | RequestArgsCase2 | RequestArgsCase3,
+    reject: (reason?: any) => void
+  ) {
+    const argsLength = args.length;
+    let cb: LockGrantedCallback;
+    let _options: LockOptions;
+    // handle args in different case
+    if (argsLength < 2) {
+      reject(
+        new TypeError(
+          `Failed to execute 'request' on 'LockManager': 2 arguments required, but only ${args.length} present.`
+        )
+      );
+      return null;
+    } else if (argsLength === 2) {
+      if (typeof args[1] !== "function") {
+        reject(
+          new TypeError(
+            "Failed to execute 'request' on 'LockManager': parameter 2 is not of type 'Function'."
+          )
+        );
+        return null;
+      } else {
+        cb = args[1];
+        _options = this._defaultOptions;
+      }
+    } else {
+      if (typeof args[2] !== "function") {
+        reject(
+          new TypeError(
+            "Failed to execute 'request' on 'LockManager': parameter 3 is not of type 'Function'."
+          )
+        );
+        return null;
+      } else {
+        cb = args[2];
+        _options = { ...this._defaultOptions, ...args[1] };
+      }
+    }
+    if (Object.values(LOCK_MODE).indexOf(_options.mode) < 0) {
+      reject(
+        new TypeError(
+          `Failed to execute 'request' on 'LockManager': The provided value '${_options.mode}' is not a valid enum value of type LockMode.`
+        )
+      );
+      return null;
+    }
+
+    // handle source name
+    if (args[0][0] === "-") {
+      reject(
+        new DOMException(
+          "Failed to execute 'request' on 'LockManager': Names cannot start with '-'."
+        )
+      );
+      return null;
+    }
+    return { cb, _options };
   }
 
   private _handleHeldLockAndRequest(
@@ -514,11 +555,6 @@ export class LockManager {
     return queryResult;
   }
 
-  // add async for align with native api and type
-  public async query() {
-    return this._query();
-  }
-
   private _onUnload() {
     window.addEventListener("unload", (e) => {
       this._cleanClientLocksByClientId(this._clientId);
@@ -598,11 +634,12 @@ export class LockManager {
       return pre;
     }, [] as string[]);
     const uniqueClientIds = [...new Set(allClientIds)];
+    if (!uniqueClientIds.length) return;
     uniqueClientIds.forEach((clientId) => {
       const timeStamp = getStorageItem(clientId);
       // if unlive
-      if (timeStamp && Date.now() - Number(timeStamp) > 3100) {
-        removeStorageItem(timeStamp);
+      if (!timeStamp || Date.now() - Number(timeStamp) > 3100) {
+        removeStorageItem(clientId);
         this._cleanClientLocksByClientId(clientId);
       }
     });
