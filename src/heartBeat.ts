@@ -2,7 +2,7 @@ export class HeartBeat {
   private _key: string;
   private _heartBeatIntervalTime: number;
   private _heartBeatDetectIntervalTime: number;
-  private _intervalId: NodeJS.Timeout;
+  private _intervalId: null | ReturnType<typeof setTimeout> = null;
   constructor({
     key,
     heartBeatIntervalTime = 1000,

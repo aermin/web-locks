@@ -68,6 +68,7 @@ export class LockManager {
       ifAvailable: false,
       steal: false,
     };
+    this._clientId = generateRandomId();
     this._init();
   }
 
@@ -128,7 +129,6 @@ export class LockManager {
   }
 
   private _init() {
-    this._clientId = generateRandomId();
     const heartBeat = new HeartBeat({ key: this._clientId });
     heartBeat.start();
     this._cleanUnliveClientLocks();
