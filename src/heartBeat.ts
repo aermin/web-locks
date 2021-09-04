@@ -6,7 +6,7 @@ export class HeartBeat {
   constructor({
     key,
     heartBeatIntervalTime = 1000,
-    heartBeatDetectIntervalTime = 1000 * 60,
+    heartBeatDetectIntervalTime = 1000 * 2,
   }: {
     key: string;
     heartBeatIntervalTime?: number;
@@ -22,6 +22,7 @@ export class HeartBeat {
 
   start() {
     this._intervalId = setInterval(() => {
+      console.log("heartBeat====");
       this._setLocalTime();
     }, this._heartBeatIntervalTime);
   }
@@ -36,9 +37,10 @@ export class HeartBeat {
     window.localStorage.setItem(this._key, Date.now().toString());
   }
 
-  detectHearBeat() {
+  detect(cb: () => void) {
     this._intervalId = setInterval(() => {
-      this._setLocalTime();
+      console.log("detectHearBeat===");
+      cb();
     }, this._heartBeatDetectIntervalTime);
   }
 }

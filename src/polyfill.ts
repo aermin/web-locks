@@ -131,7 +131,7 @@ export class LockManager {
   private _init() {
     const heartBeat = new HeartBeat({ key: this._clientId });
     heartBeat.start();
-    this._cleanUnliveClientLocks();
+    heartBeat.detect(this._cleanUnliveClientLocks);
     this._onUnload();
   }
 
@@ -213,7 +213,6 @@ export class LockManager {
           )
         );
       }
-      self._cleanUnliveClientLocks();
 
       const name = args[0];
 
