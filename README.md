@@ -57,13 +57,16 @@ import type {
 
 ## Process
 
-### API ✅
+### All API ✅
 
 - navigator.locks.request
 
 - navigator.locks.request options:
- 
-  `mode` | `ifAvailable ` | `steal` | `signal`
+
+  `mode`: "exclusive"| "shared"
+  `ifAvailable`
+  `steal`
+  `signal`
 
 - navigator.locks.query
 
