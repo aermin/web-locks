@@ -2,7 +2,9 @@ export class HeartBeat {
   private _key: string;
   private _heartBeatIntervalTime: number;
   private _heartBeatDetectIntervalTime: number;
-  private _intervalId: null | ReturnType<typeof setTimeout> = null;
+  private _heartBeatIntervalId: null | ReturnType<typeof setTimeout> = null;
+  private _heartBeatDetectIntervalId: null | ReturnType<typeof setTimeout> =
+    null;
   constructor({
     key,
     heartBeatIntervalTime = 1000,
@@ -21,15 +23,17 @@ export class HeartBeat {
   }
 
   start() {
-    this._intervalId = setInterval(() => {
-      console.log("heartBeat====");
+    this._heartBeatIntervalId = setInterval(() => {
       this._setLocalTime();
     }, this._heartBeatIntervalTime);
   }
 
   destroy() {
-    if (this._intervalId) {
-      clearInterval(this._intervalId);
+    if (this._heartBeatIntervalId) {
+      clearInterval(this._heartBeatIntervalId);
+    }
+    if (this._heartBeatDetectIntervalId) {
+      clearInterval(this._heartBeatDetectIntervalId);
     }
   }
 
@@ -38,8 +42,7 @@ export class HeartBeat {
   }
 
   detect(cb: () => void) {
-    this._intervalId = setInterval(() => {
-      console.log("detectHearBeat===");
+    this._heartBeatDetectIntervalId = setInterval(() => {
       cb();
     }, this._heartBeatDetectIntervalTime);
   }
