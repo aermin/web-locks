@@ -1,5 +1,5 @@
 import { LockManager } from "../src/polyfill";
-
+export * from "../src/sleep";
 export * from "../src/polyfill";
 
 let mockFridge: { [P: string]: any } = {};
@@ -17,10 +17,6 @@ export function createWebLocksInstance() {
   const webLocks = new LockManager();
   window.localStorage.removeItem("heldLockSet");
   return webLocks;
-}
-
-export function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export const neverSettledPromise = new Promise((resolve) => {
