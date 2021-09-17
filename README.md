@@ -17,15 +17,19 @@ a [Web Locks API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Locks_API
 
 - implement all the features of [Web Locks API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Locks_API)
 
-## Usage:
-
-install this lib
+## Installation
 
 ```
-npm i navigator.locks
+// with npm
+npm install navigator.locks
+
+// with yarn
+yarn add navigator.locks
 ```
 
-import this lib and use it follow [Web Locks API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Locks_API)
+## Usage
+
+Just import It.
 
 ```js
 import "navigator.locks";
@@ -49,6 +53,8 @@ import type {
 } from "navigator.locks";
 ```
 
+> `navigator.locks` API usage follow [MDN API Doc](https://developer.mozilla.org/en-US/docs/Web/API/Web_Locks_API)
+
 ## Online demo
 
 [demo link](https://codesandbox.io/s/web-locks-demo-ytqq5?file=/src/pollfill/polyfill.ts)
@@ -63,14 +69,13 @@ import type {
 
 - navigator.locks.request options:
 
-  *mode*: `exclusive` | `shared`
+  _mode_: `exclusive` | `shared`
 
-  *ifAvailable*
+  _ifAvailable_
 
-  *steal*
+  _steal_
 
-  *signal*
-
+  _signal_
 
 - navigator.locks.query
 
