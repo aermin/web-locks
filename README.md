@@ -69,13 +69,13 @@ import type {
 
 - navigator.locks.request options:
 
-  _mode_: `exclusive` | `shared`
+  *mode*: `exclusive` | `shared`
 
-  _ifAvailable_
+  *ifAvailable*
 
-  _steal_
+  *steal*
 
-  _signal_
+  *signal*
 
 - navigator.locks.query
 
