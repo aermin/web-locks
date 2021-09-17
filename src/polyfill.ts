@@ -14,9 +14,12 @@ const LOCK_MODE = {
 
 type LockMode = typeof LOCK_MODE[keyof typeof LOCK_MODE];
 
+const LIB_PREFIX = "$navigator.locks";
+
 enum STORAGE_KEYS {
-  REQUEST_QUEUE_MAP = "requestQueueMap",
-  HELD_LOCK_SET = "heldLockSet",
+  REQUEST_QUEUE_MAP = "$navigator.locks-requestQueueMap",
+  HELD_LOCK_SET = "$navigator.locks-heldLockSet",
+  CLIENT_IDS = "$navigator.locks-clientIds",
 }
 interface LockOptions {
   mode: LockMode;
@@ -83,15 +86,32 @@ export class LockManager {
       ifAvailable: false,
       steal: false,
     };
-    this._clientId = generateRandomId();
+    this._clientId = `${LIB_PREFIX}-clientId-${generateRandomId()}`;
     this._init();
   }
 
   private _init() {
+    this._storeThisClientId();
     const heartBeat = new HeartBeat({ key: this._clientId });
     heartBeat.start();
+    // handle when unload could't work or the client crash, then clean
     heartBeat.detect(() => this._cleanUnliveClientLocks());
     this._onUnload();
+  }
+
+  private _getClientIds(): string[] {
+    const clientIds = getStorageItem(STORAGE_KEYS.CLIENT_IDS);
+    return (clientIds && JSON.parse(clientIds)) || [];
+  }
+
+  private _storeClientIds(clientIds: string[]) {
+    setStorageItem(STORAGE_KEYS.CLIENT_IDS, JSON.stringify(clientIds));
+  }
+
+  private _storeThisClientId() {
+    const prevClientIds = this._getClientIds();
+    const curClientIds = [...prevClientIds, this._clientId];
+    this._storeClientIds(curClientIds);
   }
 
   public async request(...args: RequestArgsCase1): Promise<any>;
@@ -614,20 +634,25 @@ export class LockManager {
   }
 
   private _cleanUnliveClientLocks() {
-    const { held, pending } = this._query();
-    const allClientIds = [...held, ...pending].reduce((pre, cur) => {
-      pre.push(cur.clientId);
-      return pre;
-    }, [] as string[]);
-    const uniqueClientIds = [...new Set(allClientIds)];
-    if (!uniqueClientIds.length) return;
+    const uniqueClientIds = [...new Set(this._getClientIds())];
+    if (!uniqueClientIds.length) {
+      this._storeClientIds([]);
+      return;
+    }
+
+    const aliveClientIds: string[] = [];
     uniqueClientIds.forEach((clientId) => {
       const timeStamp = getStorageItem(clientId);
       // if unlive
       if (!timeStamp || Date.now() - Number(timeStamp) > 3100) {
         removeStorageItem(clientId);
         this._cleanClientLocksByClientId(clientId);
+      } else {
+        aliveClientIds.push(clientId);
       }
     });
+    if (JSON.stringify(uniqueClientIds) !== JSON.stringify(aliveClientIds)) {
+      this._storeClientIds(aliveClientIds);
+    }
   }
 }
