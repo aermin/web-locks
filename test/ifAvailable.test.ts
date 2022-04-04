@@ -257,4 +257,72 @@ describe("Web Locks API: ifAvailable option", () => {
     // callback1 should be called
     expect(callback1_called).toBeTruthy();
   });
+
+  test("nested locks that throw exception", async () => {
+    const webLocks = createWebLocksInstance();
+    const sourceName1 = generateRandomId();
+    const sourceName2 = generateRandomId();
+
+    let callback1_called = false;
+
+    await webLocks.request(
+      sourceName1,
+      { ifAvailable: true },
+      async (lock1) => {
+        if (lock1 === null) {
+          // this code path is not reached since this is the first request for sourceName1
+          return;
+        }
+
+        callback1_called = true;
+
+        let callback2_called = false;
+
+        await expect(() =>
+          webLocks.request(
+            sourceName2,
+            { ifAvailable: true },
+            async (lock2) => {
+              if (lock2 === null) {
+                // this code path is not reached since this is the first request for sourceName2
+                return;
+              }
+
+              callback2_called = true;
+
+              let callback3_called = false;
+
+              await webLocks.request(
+                sourceName1,
+                { ifAvailable: true },
+                async (lock3) => {
+                  if (lock3 === null) {
+                    // this code path *is* reached since this sourceName1 is already held
+                    return;
+                  }
+
+                  // this code path is not reached
+                  callback3_called = true;
+                }
+              );
+
+              expect(callback3_called).toBeFalsy();
+
+              // this will raise exception that we catch later
+              if (!callback3_called) {
+                throw new Error("test error");
+              }
+            }
+          )
+        ).rejects.toHaveProperty("message", "test error");
+
+        // at this point there should only be one lock held, namely sourceName1
+        expect((await webLocks.query()).held).toHaveLength(1);
+
+        expect(callback2_called).toBeTruthy();
+      }
+    );
+
+    expect(callback1_called).toBeTruthy();
+  });
 });
