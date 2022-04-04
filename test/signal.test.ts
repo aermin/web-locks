@@ -40,8 +40,9 @@ describe("Web Locks API: AbortSignal integration", () => {
         expect(cb).not.toHaveBeenCalled();
       } catch (error) {
         // Bindings should throw if the signal option is a not an AbortSignal
-        expect(error.name).toEqual("TypeError");
-        expect(error.message).toEqual(
+        expect(error).toHaveProperty("name", "TypeError");
+        expect(error).toHaveProperty(
+          "message",
           "Failed to execute 'request' on 'LockManager': member signal is not of type AbortSignal."
         );
       }
@@ -63,7 +64,8 @@ describe("Web Locks API: AbortSignal integration", () => {
     } catch (error) {
       // Request should reject with AbortError
       expect(error instanceof DOMException).toBeTruthy();
-      expect(error.message).toEqual(
+      expect(error).toHaveProperty(
+        "message",
         "Failed to execute 'request' on 'LockManager': The request was aborted."
       );
     }

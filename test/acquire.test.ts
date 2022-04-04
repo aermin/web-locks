@@ -11,10 +11,11 @@ async function testCallBackArg(arg: any) {
     // @ts-ignore
     await webLocks.request(sourceName, arg);
   } catch (error) {
-    expect(error.message).toEqual(
+    expect(error).toHaveProperty(
+      "message",
       "Failed to execute 'request' on 'LockManager': parameter 2 is not of type 'Function'."
     );
-    expect(error.name).toEqual("TypeError");
+    expect(error).toHaveProperty("name", "TypeError");
   }
 }
 
@@ -100,7 +101,8 @@ describe("Returned Promise rejects if callback throws asynchronously", () => {
         (lock) => {}
       );
     } catch (error) {
-      expect(error.message).toEqual(
+      expect(error).toHaveProperty(
+        "message",
         "Failed to execute 'request' on 'LockManager': The 'steal' and 'ifAvailable' options cannot be used together."
       );
       expect(error instanceof DOMException).toBeTruthy();
@@ -119,7 +121,8 @@ describe("Returned Promise rejects if callback throws asynchronously", () => {
         (lock) => {}
       );
     } catch (error) {
-      expect(error.message).toEqual(
+      expect(error).toHaveProperty(
+        "message",
         "Failed to execute 'request' on 'LockManager': The 'steal' option may only be used with 'exclusive' locks."
       );
       expect(error instanceof DOMException).toBeTruthy();
@@ -139,7 +142,8 @@ describe("Returned Promise rejects if callback throws asynchronously", () => {
         (lock) => {}
       );
     } catch (error) {
-      expect(error.message).toEqual(
+      expect(error).toHaveProperty(
+        "message",
         "Failed to execute 'request' on 'LockManager': The 'signal' and 'steal' options cannot be used together."
       );
       expect(error instanceof DOMException).toBeTruthy();
@@ -159,7 +163,8 @@ describe("Returned Promise rejects if callback throws asynchronously", () => {
         (lock) => {}
       );
     } catch (error) {
-      expect(error.message).toEqual(
+      expect(error).toHaveProperty(
+        "message",
         "Failed to execute 'request' on 'LockManager': The 'signal' and 'ifAvailable' options cannot be used together."
       );
       expect(error instanceof DOMException).toBeTruthy();
