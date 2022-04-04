@@ -421,6 +421,7 @@ export class LockManager {
             _resolve(res);
             resolve(res);
           } catch (error) {
+            _resolve(error);
             reject(error);
           }
         });
