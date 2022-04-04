@@ -43,8 +43,6 @@ export type LockInfo = Lock & {
 type Request = LockInfo & {
   resolve: (value?: unknown) => void;
   reject: (reason?: any) => void;
-  cbResolve?: (value?: unknown) => void;
-  cbReject?: (reason?: any) => void;
 };
 
 type RequestArgsCase1 = [name: string, callback: LockGrantedCallback];
@@ -412,9 +410,7 @@ export class LockManager {
     reject: (reason?: any) => void
   ) {
     return (args: Lock | null) => {
-      return new Promise((_resolve, _reject) => {
-        request.cbResolve = _resolve;
-        request.cbReject = _reject;
+      return new Promise((_resolve) => {
         new Promise((res) => res("")).then(async () => {
           try {
             const res = await cb(args);
