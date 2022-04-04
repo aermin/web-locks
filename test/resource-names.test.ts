@@ -53,7 +53,8 @@ describe("Web Locks API: Resources DOMString edge cases", () => {
         //Names starting with "-" should be rejected
         await webLocks.request(name, (lock) => {});
       } catch (error) {
-        expect(error.message).toEqual(
+        expect(error).toHaveProperty(
+          "message",
           "Failed to execute 'request' on 'LockManager': Names cannot start with '-'."
         );
         expect(error instanceof DOMException).toBeTruthy();
