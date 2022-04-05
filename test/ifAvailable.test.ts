@@ -318,6 +318,7 @@ describe("Web Locks API: ifAvailable option", () => {
 
         // at this point there should only be one lock held, namely sourceName1
         expect((await webLocks.query()).held).toHaveLength(1);
+        expect((await webLocks.query()).held[0].name).toEqual(sourceName1);
 
         expect(callback2_called).toBeTruthy();
       }
