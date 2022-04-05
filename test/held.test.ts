@@ -91,6 +91,8 @@ describe("Web Locks API: Lock held until callback result resolves", () => {
     ]);
 
     expect(order).toEqual(["reject", "2nd lock granted"]);
+    const log = "testing-checker";
+    console.log(log);
   });
 
   test("held lock prevents the same client from acquiring it", async () => {
