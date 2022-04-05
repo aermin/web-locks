@@ -131,7 +131,7 @@ export class LockManager {
         reject,
       };
 
-      const resolveWithCB = self._resolveWithCB(request, cb, resolve, reject);
+      const resolveWithCB = self._resolveWithCB(cb, resolve, reject);
 
       let heldLockSet = self._heldLockSet();
       let heldLock = heldLockSet.find((e) => {
@@ -404,7 +404,6 @@ export class LockManager {
 
   // let cb executed in Micro task
   private _resolveWithCB(
-    request: Request,
     cb: LockGrantedCallback,
     resolve: (value?: unknown) => void,
     reject: (reason?: any) => void

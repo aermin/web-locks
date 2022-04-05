@@ -227,6 +227,9 @@ describe("Returned Promise rejects if callback throws asynchronously", () => {
     } catch (error) {
       expect(error).toEqual(test_error);
     }
+
+    // this held lock should be released;
+    expect((await webLocks.query()).held).toHaveLength(0);
   });
 
   test("Returned Promise rejects if callback throws asynchronously", async () => {
@@ -245,5 +248,8 @@ describe("Returned Promise rejects if callback throws asynchronously", () => {
     } catch (error) {
       expect(error).toEqual(test_error);
     }
+
+    // this held lock should be released;
+    expect((await webLocks.query()).held).toHaveLength(0);
   });
 });
