@@ -9,7 +9,7 @@
 
 </h3>
 
-a [Web Locks API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Locks_API) polyfill, work for the browsers which haven't support web lock API: `navigator.lock`, e.g. `Firefox`, `Safari`, `IE`.
+a [Web Locks API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Locks_API) polyfill, work when the browser does not support web lock API: `navigator.lock`, resolve the browser compatibility issue.
 
 - implement features according to [Web Locks API Specification](https://wicg.github.io/web-locks/)
 
