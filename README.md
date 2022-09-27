@@ -57,9 +57,9 @@ import type {
 
 ## Online demo
 
-[demo link](https://codesandbox.io/s/web-locks-demo-ytqq5?file=/src/pollfill/polyfill.ts)
+[demo link](https://ytqq5.csb.app/)
 
-> you could open this URL in two tabs, operate the lock buttons and see the page and console
+> You could open two tabs of this API unsupported browser, operate the lock buttons to experience
 
 ## Process
 
