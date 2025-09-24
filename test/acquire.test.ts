@@ -27,7 +27,7 @@ describe("Returned Promise rejects if callback throws asynchronously", () => {
     try {
       // @ts-ignore
       await webLocks.request();
-    } catch ({ name, message }) {
+    } catch ({ name, message }: any) {
       expect(name).toEqual("TypeError");
       expect(message).toEqual(
         "Failed to execute 'request' on 'LockManager': 2 arguments required, but only 0 present."
@@ -38,7 +38,7 @@ describe("Returned Promise rejects if callback throws asynchronously", () => {
       const sourceName = generateRandomId();
       // @ts-ignore
       await webLocks.request(sourceName);
-    } catch ({ name, message }) {
+    } catch ({ name, message }: any) {
       expect(name).toEqual("TypeError");
       expect(message).toEqual(
         "Failed to execute 'request' on 'LockManager': 2 arguments required, but only 1 present."
@@ -52,7 +52,7 @@ describe("Returned Promise rejects if callback throws asynchronously", () => {
     try {
       // @ts-ignore
       await webLocks.request(sourceName, { mode: "foo" }, (lock) => {});
-    } catch ({ name, message }) {
+    } catch ({ name, message }: any) {
       expect(name).toEqual("TypeError");
       expect(message).toEqual(
         "Failed to execute 'request' on 'LockManager': The provided value 'foo' is not a valid enum value of type LockMode."
@@ -62,7 +62,7 @@ describe("Returned Promise rejects if callback throws asynchronously", () => {
     try {
       // @ts-ignore
       await webLocks.request(sourceName, { mode: null }, (lock) => {});
-    } catch ({ name, message }) {
+    } catch ({ name, message }: any) {
       expect(name).toEqual("TypeError");
       expect(message).toEqual(
         "Failed to execute 'request' on 'LockManager': The provided value 'null' is not a valid enum value of type LockMode."

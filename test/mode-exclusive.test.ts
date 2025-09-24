@@ -39,6 +39,8 @@ describe("test suite of Web Locks API: mode-exclusive", () => {
         // But this should be grantable immediately.
         webLocks.request("b", log_grant(2)),
       ]);
+      // Flush microtask queue
+      await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
     await inner_promise;
