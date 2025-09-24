@@ -49,5 +49,7 @@
     "preset": "ts-jest",
     "testEnvironment": "jsdom"
   },
-  "dependencies": {}
+  "engines": {
+    "node": ">=20.x <=24.x"
+  }
 }
