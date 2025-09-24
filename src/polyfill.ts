@@ -23,8 +23,8 @@ enum STORAGE_KEYS {
 }
 interface LockOptions {
   mode: LockMode;
-  ifAvailable: Boolean;
-  steal: Boolean;
+  ifAvailable: boolean;
+  steal: boolean;
   signal?: AbortSignal;
 }
 
@@ -43,6 +43,8 @@ export type LockInfo = Lock & {
 type Request = LockInfo & {
   resolve: (value?: unknown) => void;
   reject: (reason?: any) => void;
+  closeSignal?: () => void;
+  signal?: AbortSignal;
 };
 
 type RequestArgsCase1 = [name: string, callback: LockGrantedCallback];
@@ -116,7 +118,7 @@ export class LockManager {
   public async request(...args: RequestArgsCase2): Promise<any>;
   public async request(...args: RequestArgsCase3) {
     const self = this;
-    return new Promise(async function (resolve, reject) {
+    return new Promise(function (resolve, reject) {
       const res = self._handleRequestArgs(args, reject);
       if (!res) return;
       const { cb, _options } = res;
@@ -129,6 +131,7 @@ export class LockManager {
         uuid: `${name}-${generateRandomId()}`,
         resolve,
         reject,
+        signal: _options.signal,
       };
 
       const resolveWithCB = self._resolveWithCB(cb, resolve, reject);
@@ -141,7 +144,6 @@ export class LockManager {
 
       // handle request options
       if (_options.steal === true) {
-        if (!self._handleExceptionWhenStealIsTrue(_options, reject)) return;
         // one held lock or multiple shared locks of this source should be remove
         heldLockSet = heldLockSet.filter((e) => e.name !== request.name);
         heldLock = heldLockSet.find((e) => {
@@ -253,50 +255,29 @@ export class LockManager {
     }
   }
 
+  private _getAbortError(signal: AbortSignal) {
+    return signal.reason || new DOMException("The request was aborted.", "AbortError");
+  }
+
   private _handleSignalExisted(
-    _options: LockOptions,
+    { signal }: LockOptions,
     reject: (reason?: any) => void,
     request: Request
   ) {
-    if (!(_options.signal instanceof AbortSignal)) {
+    if (!(signal instanceof AbortSignal)) {
       reject(
         new TypeError(
           "Failed to execute 'request' on 'LockManager': member signal is not of type AbortSignal."
         )
       );
       return false;
-    } else if (_options.signal.aborted) {
-      reject(
-        new DOMException(
-          "Failed to execute 'request' on 'LockManager': The request was aborted."
-        )
-      );
+    } else if (signal.aborted) {
+      reject(this._getAbortError(signal));
       return false;
     } else {
-      this._signalOnabort(_options.signal, request);
-    }
-    return true;
-  }
-
-  private _handleExceptionWhenStealIsTrue(
-    _options: LockOptions,
-    reject: (reason?: any) => void
-  ) {
-    if (_options.mode !== LOCK_MODE.EXCLUSIVE) {
-      reject(
-        new DOMException(
-          "Failed to execute 'request' on 'LockManager': The 'steal' option may only be used with 'exclusive' locks."
-        )
-      );
-      return false;
-    }
-    if (_options.ifAvailable === true) {
-      reject(
-        new DOMException(
-          "Failed to execute 'request' on 'LockManager': The 'steal' and 'ifAvailable' options cannot be used together."
-        )
-      );
-      return false;
+      const listener = this._signalOnabort(signal, request);
+      signal.addEventListener("abort", listener);
+      request.closeSignal = () => signal.removeEventListener("abort", listener);
     }
     return true;
   }
@@ -354,11 +335,53 @@ export class LockManager {
     if (args[0][0] === "-") {
       reject(
         new DOMException(
-          "Failed to execute 'request' on 'LockManager': Names cannot start with '-'."
+          "Failed to execute 'request' on 'LockManager': Names cannot start with '-'.",
+          "NotSupportedError"
         )
       );
       return null;
     }
+
+    if (_options.signal && _options.steal) {
+      reject(
+        new DOMException(
+          "Failed to execute 'request' on 'LockManager': The 'signal' and 'steal' options cannot be used together.",
+          "NotSupportedError"
+        )
+      );
+      return null;
+    }
+
+    if (_options.signal && _options.ifAvailable) {
+      reject(
+        new DOMException(
+          "Failed to execute 'request' on 'LockManager': The 'signal' and 'ifAvailable' options cannot be used together.",
+          "NotSupportedError"
+        )
+      );
+      return null;
+    }
+
+    if (_options.steal && _options.ifAvailable) {
+      reject(
+        new DOMException(
+          "Failed to execute 'request' on 'LockManager': The 'steal' and 'ifAvailable' options cannot be used together.",
+          "NotSupportedError"
+        )
+      );
+      return null;
+    }
+
+    if (_options.steal && _options.mode !== LOCK_MODE.EXCLUSIVE) {
+      reject(
+        new DOMException(
+          "Failed to execute 'request' on 'LockManager': The 'steal' option may only be used with 'exclusive' locks.",
+          "NotSupportedError"
+        )
+      );
+      return null;
+    }
+
     return { cb, _options };
   }
 
@@ -388,17 +411,23 @@ export class LockManager {
     }
   }
 
-  private _signalOnabort(signal: AbortSignal, { name, uuid }: Request) {
-    signal.onabort = () => {
+  private _signalOnabort(signal: AbortSignal, { name, uuid, reject }: Request) {
+    return () => {
       // clean the lock request when it is aborted
       const _requestLockQueueMap = this._requestLockQueueMap();
-      const requestLockIndex = _requestLockQueueMap[name].findIndex(
-        (lock) => lock.uuid === uuid
-      );
-      if (requestLockIndex !== -1) {
-        _requestLockQueueMap[name].splice(requestLockIndex, 1);
-        this._storeRequestLockQueueMap(_requestLockQueueMap);
+      const requestLockQueue = _requestLockQueueMap[name];
+
+      if (requestLockQueue) {
+        const requestLockIndex = requestLockQueue.findIndex(
+          (lock) => lock.uuid === uuid
+        );
+        if (requestLockIndex !== -1) {
+          requestLockQueue.splice(requestLockIndex, 1);
+          this._storeRequestLockQueueMap(_requestLockQueueMap);
+        }
       }
+
+      reject(this._getAbortError(signal));
     };
   }
 
@@ -430,6 +459,17 @@ export class LockManager {
     currentHeldLockSet?: LocksInfo
   ) {
     this._pushToHeldLockSet(request, currentHeldLockSet);
+
+    // give sync aborts a chance to be processed first
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // ignore any further attempts to abort the request
+    request.closeSignal?.();
+
+    if (request.signal?.aborted) {
+      this._updateHeldAndRequestLocks(request);
+      return request.reject(this._getAbortError(request.signal));
+    }
 
     // check and handle if this held lock has been steal
     let callBackResolved = false;
