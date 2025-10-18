@@ -19,11 +19,44 @@ jobs:
       - run: npm install
       - run: npm run build
       - run: npm run test
-      - run: npm publish
+      - name: Read package metadata
+        id: npm-meta
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if [[ "$VERSION" == *"-"* ]]; then
+            TAG="${VERSION#*-}"
+            TAG="${TAG%%.*}"
+          else
+            TAG=""
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+      - name: Check npm for existing version
+        id: npm-version-check
+        shell: bash
+        run: |
+          if npm view navigator.locks@"${{ steps.npm-meta.outputs.version }}" > /dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Publish to npm
+        if: steps.npm-version-check.outputs.exists == 'false'
+        shell: bash
+        run: |
+          if [ -n "${{ steps.npm-meta.outputs.tag }}" ]; then
+            npm publish --tag "${{ steps.npm-meta.outputs.tag }}"
+          else
+            npm publish
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           CI: true
+      - name: Skip npm publish
+        if: steps.npm-version-check.outputs.exists == 'true'
+        run: echo "navigator.locks@${{ steps.npm-meta.outputs.version }} 已存在于 npm，跳过发布。"
 
   publish-github-packages:
     runs-on: ubuntu-latest
@@ -41,13 +74,49 @@ jobs:
       - run: npm install
       - run: npm run build
       - run: npm run test
-      - name: Configure package name for GitHub Packages
+      - name: Prepare GitHub Packages metadata
+        id: github-pkg-meta
+        shell: bash
         run: |
           OWNER=${GITHUB_REPOSITORY_OWNER:-$(echo "$GITHUB_REPOSITORY" | cut -d'/' -f1)}
-          npm pkg set name="@${OWNER}/web-locks"
-          echo "@${OWNER}:registry=https://npm.pkg.github.com" >> ~/.npmrc
+          VERSION=$(node -p "require('./package.json').version")
+          if [[ "$VERSION" == *"-"* ]]; then
+            TAG="${VERSION#*-}"
+            TAG="${TAG%%.*}"
+          else
+            TAG=""
+          fi
+          echo "owner=$OWNER" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+      - name: Configure package name for GitHub Packages
+        run: |
+          npm pkg set name="@${{ steps.github-pkg-meta.outputs.owner }}/web-locks"
+          echo "@${{ steps.github-pkg-meta.outputs.owner }}:registry=https://npm.pkg.github.com" >> ~/.npmrc
+      - name: Check GitHub Packages for existing version
+        id: ghpkg-version-check
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PACKAGE="@${{ steps.github-pkg-meta.outputs.owner }}/web-locks"
+          VERSION="${{ steps.github-pkg-meta.outputs.version }}"
+          if npm view "$PACKAGE@$VERSION" --registry=https://npm.pkg.github.com/ > /dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Publish to GitHub Packages
-        run: npm publish --registry=https://npm.pkg.github.com/
+        if: steps.ghpkg-version-check.outputs.exists == 'false'
+        shell: bash
+        run: |
+          if [ -n "${{ steps.github-pkg-meta.outputs.tag }}" ]; then
+            npm publish --registry=https://npm.pkg.github.com/ --tag "${{ steps.github-pkg-meta.outputs.tag }}"
+          else
+            npm publish --registry=https://npm.pkg.github.com/
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CI: true
+      - name: Skip GitHub Packages publish
+        if: steps.ghpkg-version-check.outputs.exists == 'true'
+        run: echo "@${{ steps.github-pkg-meta.outputs.owner }}/web-locks@${{ steps.github-pkg-meta.outputs.version }} 已存在于 GitHub Packages，跳过发布。"
