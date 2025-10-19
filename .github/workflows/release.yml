@@ -93,6 +93,8 @@ jobs:
         run: |
           npm pkg set name="@${{ steps.github-pkg-meta.outputs.owner }}/web-locks"
           echo "@${{ steps.github-pkg-meta.outputs.owner }}:registry=https://npm.pkg.github.com" >> ~/.npmrc
+          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> ~/.npmrc
+          echo "always-auth=true" >> ~/.npmrc
       - name: Check GitHub Packages for existing version
         id: ghpkg-version-check
         env:
