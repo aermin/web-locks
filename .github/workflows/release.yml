@@ -89,12 +89,15 @@ jobs:
           echo "owner=$OWNER" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+      - name: Configure npm for GitHub Packages
+        uses: actions/setup-node@v3
+        with:
+          node-version: '24.x'
+          registry-url: https://npm.pkg.github.com/
+          scope: '@${{ github.repository_owner }}'
+          always-auth: true
       - name: Configure package name for GitHub Packages
-        run: |
-          npm pkg set name="@${{ steps.github-pkg-meta.outputs.owner }}/web-locks"
-          echo "@${{ steps.github-pkg-meta.outputs.owner }}:registry=https://npm.pkg.github.com" >> ~/.npmrc
-          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> ~/.npmrc
-          echo "always-auth=true" >> ~/.npmrc
+        run: npm pkg set name="@${{ steps.github-pkg-meta.outputs.owner }}/web-locks"
       - name: Check GitHub Packages for existing version
         id: ghpkg-version-check
         env:
