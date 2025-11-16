@@ -1,8 +1,4 @@
-import {
-  createWebLocksInstance,
-  generateRandomId,
-  sleep,
-} from "./helpers";
+import { createWebLocksInstance, generateRandomId, sleep } from "./helpers";
 
 describe("Web Locks API: ifAvailable option", () => {
   test("Lock request with ifAvailable - lock available", async () => {

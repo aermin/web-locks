@@ -1,8 +1,4 @@
-import {
-  createWebLocksInstance,
-  generateRandomId,
-  LockInfo,
-} from "./helpers";
+import { createWebLocksInstance, generateRandomId, LockInfo } from "./helpers";
 
 // Returns an array of the modes for the locks with matching name.
 function modes(list: LockInfo[], name: string) {

@@ -14,7 +14,7 @@ jobs:
         with:
           # build with latest LTS
           # https://nodejs.org/en/about/previous-releases#release-schedule
-          node-version: '24.x'
+          node-version: "24.x"
           registry-url: https://registry.npmjs.org/
       - run: npm install
       - run: npm run build
@@ -69,7 +69,7 @@ jobs:
       # Setup .npmrc file to publish to GitHub Packages
       - uses: actions/setup-node@v3
         with:
-          node-version: '24.x'
+          node-version: "24.x"
           registry-url: https://registry.npmjs.org/
       - run: npm install
       - run: npm run build
@@ -92,9 +92,9 @@ jobs:
       - name: Configure npm for GitHub Packages
         uses: actions/setup-node@v3
         with:
-          node-version: '24.x'
+          node-version: "24.x"
           registry-url: https://npm.pkg.github.com/
-          scope: '@${{ github.repository_owner }}'
+          scope: "@${{ github.repository_owner }}"
           always-auth: true
       - name: Configure package name for GitHub Packages
         run: npm pkg set name="@${{ steps.github-pkg-meta.outputs.owner }}/web-locks"

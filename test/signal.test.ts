@@ -1,7 +1,4 @@
-import {
-  createWebLocksInstance,
-  generateRandomId,
-} from "./helpers";
+import { createWebLocksInstance, generateRandomId } from "./helpers";
 
 function makePromiseAndResolveFunc(): any[] {
   let resolve;
@@ -51,10 +48,17 @@ describe("Web Locks API: AbortSignal integration", () => {
 
     const cb = jest.fn(() => {});
 
-    const promise = webLocks.request(sourceName, { signal: controller.signal }, cb);
+    const promise = webLocks.request(
+      sourceName,
+      { signal: controller.signal },
+      cb
+    );
     await expect(promise).rejects.toBeInstanceOf(DOMException);
     await expect(promise).rejects.toHaveProperty("name", "AbortError");
-    await expect(promise).rejects.toHaveProperty("message", "The operation was aborted.");
+    await expect(promise).rejects.toHaveProperty(
+      "message",
+      "The operation was aborted."
+    );
     expect(cb).not.toHaveBeenCalled();
   });
 
@@ -63,13 +67,17 @@ describe("Web Locks API: AbortSignal integration", () => {
     const sourceName = generateRandomId();
 
     const controller = new AbortController();
-    const reason = new Error('custom reason');
+    const reason = new Error("custom reason");
     controller.abort(reason);
 
     const cb = jest.fn(() => {});
 
-    const promise = webLocks.request(sourceName, { signal: controller.signal }, cb);
-    await expect(promise).rejects.toBe(reason)
+    const promise = webLocks.request(
+      sourceName,
+      { signal: controller.signal },
+      cb
+    );
+    await expect(promise).rejects.toBe(reason);
     expect(cb).not.toHaveBeenCalled();
   });
 
@@ -106,7 +114,10 @@ describe("Web Locks API: AbortSignal integration", () => {
 
     await expect(promise).rejects.toBeInstanceOf(DOMException);
     await expect(promise).rejects.toHaveProperty("name", "AbortError");
-    await expect(promise).rejects.toHaveProperty("message", "The operation was aborted.");
+    await expect(promise).rejects.toHaveProperty(
+      "message",
+      "The operation was aborted."
+    );
   });
 
   test("Abort after a timeout", async () => {
@@ -145,7 +156,10 @@ describe("Web Locks API: AbortSignal integration", () => {
 
     await expect(promise).rejects.toBeInstanceOf(DOMException);
     await expect(promise).rejects.toHaveProperty("name", "AbortError");
-    await expect(promise).rejects.toHaveProperty("message", "The operation was aborted.");
+    await expect(promise).rejects.toHaveProperty(
+      "message",
+      "The operation was aborted."
+    );
   });
 
   test("Signal that is not aborted", async () => {
@@ -187,7 +201,10 @@ describe("Web Locks API: AbortSignal integration", () => {
     // Request should abort
     await expect(promise).rejects.toBeInstanceOf(DOMException);
     await expect(promise).rejects.toHaveProperty("name", "AbortError");
-    await expect(promise).rejects.toHaveProperty("message", "The operation was aborted.");
+    await expect(promise).rejects.toHaveProperty(
+      "message",
+      "The operation was aborted."
+    );
 
     // Request should be aborted if signal is synchronous
     expect(got_lock).toBeFalsy();

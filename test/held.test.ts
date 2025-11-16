@@ -1,8 +1,4 @@
-import {
-  createWebLocksInstance,
-  generateRandomId,
-  sleep,
-} from "./helpers";
+import { createWebLocksInstance, generateRandomId, sleep } from "./helpers";
 
 describe("Web Locks API: Lock held until callback result resolves", () => {
   test("callback's result is promisified if not async", async () => {

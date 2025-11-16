@@ -1,11 +1,11 @@
-import { terser } from 'rollup-plugin-terser';
+import { terser } from "rollup-plugin-terser";
 
-import commonjs from '@rollup/plugin-commonjs';
-import json from '@rollup/plugin-json';
-import resolve from '@rollup/plugin-node-resolve';
-import typescript from '@rollup/plugin-typescript';
+import commonjs from "@rollup/plugin-commonjs";
+import json from "@rollup/plugin-json";
+import resolve from "@rollup/plugin-node-resolve";
+import typescript from "@rollup/plugin-typescript";
 
-import pkg from './package.json';
+import pkg from "./package.json";
 
 export default {
   input: "src/index.ts",
@@ -13,10 +13,10 @@ export default {
     {
       file: pkg.main,
       format: "cjs",
-      exports: 'auto',
+      exports: "auto",
       // sourcemap: true,
     },
-    { file: pkg.module, format: 'es' },
+    { file: pkg.module, format: "es" },
     {
       file: pkg.browser,
       format: "umd",

@@ -12,7 +12,7 @@ const LOCK_MODE = {
   SHARED: "shared",
 } as const;
 
-type LockMode = typeof LOCK_MODE[keyof typeof LOCK_MODE];
+type LockMode = (typeof LOCK_MODE)[keyof typeof LOCK_MODE];
 
 const LIB_PREFIX = "$navigator.locks";
 
@@ -52,13 +52,13 @@ type RequestArgsCase1 = [name: string, callback: LockGrantedCallback];
 type RequestArgsCase2 = [
   name: string,
   options: Partial<LockOptions>,
-  callback: LockGrantedCallback
+  callback: LockGrantedCallback,
 ];
 
 type RequestArgsCase3 = [
   name: string,
   optionsOrCallback: Partial<LockOptions> | LockGrantedCallback,
-  callback?: LockGrantedCallback
+  callback?: LockGrantedCallback,
 ];
 
 export type LocksInfo = LockInfo[];
@@ -256,7 +256,10 @@ export class LockManager {
   }
 
   private _getAbortError(signal: AbortSignal) {
-    return signal.reason || new DOMException("The request was aborted.", "AbortError");
+    return (
+      signal.reason ||
+      new DOMException("The request was aborted.", "AbortError")
+    );
   }
 
   private _handleSignalExisted(

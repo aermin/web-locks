@@ -1,7 +1,4 @@
-import {
-  createWebLocksInstance,
-  generateRandomId,
-} from "./helpers";
+import { createWebLocksInstance, generateRandomId } from "./helpers";
 
 async function testCallBackArg(arg: any) {
   const webLocks = createWebLocksInstance();
