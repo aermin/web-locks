@@ -17,8 +17,10 @@ export class HeartBeat {
     this._key = key;
     this._heartBeatIntervalTime = heartBeatIntervalTime;
     this._heartBeatDetectIntervalTime = heartBeatDetectIntervalTime;
-    window.addEventListener("unload", () => {
-      this.destroy();
+    window.addEventListener("pagehide", (event) => {
+      if (!event.persisted) {
+        this.destroy();
+      }
     });
   }
 
