@@ -94,9 +94,9 @@ export class LockManager {
     this._storeThisClientId();
     const heartBeat = new HeartBeat({ key: this._clientId });
     heartBeat.start();
-    // handle when unload could't work or the client crash, then clean
+    // Clean stale clients if pagehide does not fire or a client crashes.
     heartBeat.detect(() => this._cleanUnliveClientLocks());
-    this._onUnload();
+    this._onPageHide();
   }
 
   private _getClientIds(): string[] {
@@ -602,9 +602,11 @@ export class LockManager {
     return queryResult;
   }
 
-  private _onUnload() {
-    window.addEventListener("unload", (e) => {
-      this._cleanClientLocksByClientId(this._clientId);
+  private _onPageHide() {
+    window.addEventListener("pagehide", (event) => {
+      if (!event.persisted) {
+        this._cleanClientLocksByClientId(this._clientId);
+      }
     });
   }
 
