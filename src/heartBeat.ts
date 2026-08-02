@@ -26,7 +26,11 @@ export class HeartBeat {
 
   start() {
     this._heartBeatIntervalId = setInterval(() => {
-      this._setLocalTime();
+      if (typeof window !== "undefined") {
+        this._setLocalTime();
+      } else {
+        this.destroy();
+      }
     }, this._heartBeatIntervalTime);
   }
 
@@ -45,7 +49,11 @@ export class HeartBeat {
 
   detect(cb: () => void) {
     this._heartBeatDetectIntervalId = setInterval(() => {
-      cb();
+      if (typeof window !== "undefined") {
+        cb();
+      } else {
+        this.destroy();
+      }
     }, this._heartBeatDetectIntervalTime);
   }
 }
