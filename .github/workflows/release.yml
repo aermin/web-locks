@@ -8,14 +8,25 @@ jobs:
   publish-npm:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       # Setup .npmrc file to publish to npm
-      - uses: actions/setup-node@v3
+      - uses: actions/setup-node@v4
         with:
           # build with latest LTS
           # https://nodejs.org/en/about/previous-releases#release-schedule
           node-version: "24.x"
           registry-url: https://registry.npmjs.org/
+      - name: Validate release version
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          RELEASE_VERSION="${RELEASE_TAG#v}"
+          if [ "$PACKAGE_VERSION" != "$RELEASE_VERSION" ]; then
+            echo "::error::Release tag $RELEASE_TAG does not match package.json version $PACKAGE_VERSION."
+            exit 1
+          fi
       - run: npm install
       - run: npm run build
       - run: npm run test
@@ -65,9 +76,9 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       # Setup .npmrc file to publish to GitHub Packages
-      - uses: actions/setup-node@v3
+      - uses: actions/setup-node@v4
         with:
           node-version: "24.x"
           registry-url: https://registry.npmjs.org/
@@ -90,7 +101,7 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
       - name: Configure npm for GitHub Packages
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: "24.x"
           registry-url: https://npm.pkg.github.com/
