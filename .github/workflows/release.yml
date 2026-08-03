@@ -3,10 +3,19 @@ name: release
 on:
   release:
     types: [created]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Package version to publish
+        required: true
+        type: string
 
 jobs:
   publish-npm:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       # Setup .npmrc file to publish to npm
@@ -19,7 +28,7 @@ jobs:
       - name: Validate release version
         shell: bash
         env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.version }}
         run: |
           PACKAGE_VERSION=$(node -p "require('./package.json').version")
           RELEASE_VERSION="${RELEASE_TAG#v}"
@@ -62,8 +71,6 @@ jobs:
             npm publish
           fi
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           CI: true
       - name: Skip npm publish
         if: steps.npm-version-check.outputs.exists == 'true'
