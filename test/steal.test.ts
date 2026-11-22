@@ -1,5 +1,6 @@
 import {
   createWebLocksInstance,
+  defer,
   generateRandomId,
   neverSettledPromise,
 } from "./helpers";
@@ -41,24 +42,41 @@ describe("Web Locks API: steal option", () => {
     expect(callback_called).toBeTruthy();
   });
 
-  test("Broken lock's release promise rejects", async () => {
-    const webLocks = createWebLocksInstance();
-    const sourceName = generateRandomId();
+  test.each(["immediately", "after queueing"])(
+    "A stolen lock granted %s rejects with AbortError",
+    async (grant) => {
+      const webLocks = createWebLocksInstance();
+      const name = generateRandomId();
+      const blocker = defer();
+      const granted = defer();
+      const release = defer();
+      const initial =
+        grant === "after queueing"
+          ? webLocks.request(name, () => blocker.promise)
+          : undefined;
+      const request = webLocks.request(name, () => {
+        granted.resolve();
+        return release.promise;
+      });
+      const result = request.catch((error) => error);
 
-    // Grab and hold the lock.
-    const promise = webLocks.request(sourceName, (lock) => neverSettledPromise);
-
-    // Initial request's promise should reject
-    promise.catch((error) => {
-      expect(error.message).toEqual(
-        "Lock broken by another request with the 'steal' option."
-      );
-      expect(error instanceof DOMException).toBeTruthy();
-    });
-
-    // Steal it.
-    await webLocks.request(sourceName, { steal: true }, (lock) => {});
-  });
+      blocker.resolve();
+      try {
+        await granted.promise;
+        await webLocks.request(name, { steal: true }, () => {});
+        const error = await Promise.race([result, Promise.resolve(undefined)]);
+        expect(error).toBeInstanceOf(DOMException);
+        expect(error).toMatchObject({
+          name: "AbortError",
+          message: "Lock broken by another request with the 'steal' option.",
+        });
+      } finally {
+        release.resolve();
+        await Promise.all([initial, result]);
+        window.dispatchEvent(new Event("pagehide"));
+      }
+    }
+  );
 
   test("Requested lock's release promise is deferred", async () => {
     const webLocks = createWebLocksInstance();

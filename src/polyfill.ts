@@ -35,6 +35,11 @@ export type Lock = {
 
 type LockGrantedCallback = (lock?: Lock | null) => Promise<any> | any;
 
+type ResolveWithCallback = (
+  lock: Lock | null,
+  release?: () => Promise<void>
+) => Promise<void>;
+
 export type LockInfo = Lock & {
   clientId: string;
   uuid: string;
@@ -209,50 +214,58 @@ export class LockManager {
     return (heldLockSet && JSON.parse(heldLockSet)) || [];
   }
 
-  // delete old held lock and add move first request Lock to held lock set
+  // 被抢占的回调仍可能结束，此时释放操作应保留抢占者的锁和队列。
   private _updateHeldAndRequestLocks(request: Request) {
-    let heldLockSet = this._heldLockSet();
+    const heldLockSet = this._heldLockSet();
     const heldLockIndex = heldLockSet.findIndex(
       (lock) => lock.uuid === request.uuid
     );
-    if (heldLockIndex !== -1) {
-      heldLockSet.splice(heldLockIndex, 1);
-      const requestLockQueueMap = this._requestLockQueueMap();
-      const requestLockQueue = requestLockQueueMap[request.name] || [];
-      const [firstRequestLock, ...restRequestLocks] = requestLockQueue;
-      if (firstRequestLock) {
-        if (
-          firstRequestLock.mode === LOCK_MODE.EXCLUSIVE ||
-          restRequestLocks.length === 0
-        ) {
-          heldLockSet.push(firstRequestLock);
-          requestLockQueueMap[request.name] = restRequestLocks;
-        } else if (firstRequestLock.mode === LOCK_MODE.SHARED) {
-          let nonSharedLockIndex = requestLockQueue.findIndex(
-            (lock) => lock.mode !== LOCK_MODE.SHARED
-          );
-          if (nonSharedLockIndex === -1)
-            nonSharedLockIndex = requestLockQueue.length;
-          heldLockSet = [
-            ...heldLockSet,
-            ...requestLockQueue.splice(0, nonSharedLockIndex),
-          ];
-        }
+    if (heldLockIndex === -1) return;
 
-        this._storeHeldLockSetAndRequestLockQueueMap(
-          heldLockSet,
-          requestLockQueueMap
-        );
-
-        return firstRequestLock;
-      } else {
-        this._storeHeldLockSet(heldLockSet);
-      }
-    } else {
-      console.log(
-        `this held lock which uuid is ${request.uuid} had been steal`
+    heldLockSet.splice(heldLockIndex, 1);
+    const requestLockQueueMap = this._requestLockQueueMap();
+    if (
+      this._grantPendingLocks(request.name, heldLockSet, requestLockQueueMap)
+    ) {
+      this._storeHeldLockSetAndRequestLockQueueMap(
+        heldLockSet,
+        requestLockQueueMap
       );
+    } else {
+      this._storeHeldLockSet(heldLockSet);
     }
+  }
+
+  // 按队首请求与同名持有锁的兼容性授予锁。连续的共享请求可以一起获批。
+  private _grantPendingLocks(
+    name: string,
+    heldLockSet: LocksInfo,
+    requestLockQueueMap: RequestQueueMap
+  ): boolean {
+    const queue = requestLockQueueMap[name] || [];
+    const head = queue[0];
+    if (
+      !head ||
+      heldLockSet.some(
+        (lock) =>
+          lock.name === name &&
+          (head.mode === LOCK_MODE.EXCLUSIVE ||
+            lock.mode === LOCK_MODE.EXCLUSIVE)
+      )
+    ) {
+      return false;
+    }
+
+    let count = 1;
+    if (head.mode === LOCK_MODE.SHARED) {
+      const firstExclusive = queue.findIndex(
+        (lock) => lock.mode === LOCK_MODE.EXCLUSIVE
+      );
+      count = firstExclusive === -1 ? queue.length : firstExclusive;
+    }
+    queue.slice(0, count).forEach((lock) => heldLockSet.push(lock));
+    requestLockQueueMap[name] = queue.slice(count);
+    return true;
   }
 
   private _getAbortError(signal: AbortSignal) {
@@ -391,7 +404,7 @@ export class LockManager {
   private _handleHeldLockAndRequest(
     heldLock: LockInfo | undefined,
     request: Request,
-    resolveWithCB: (args: Lock | null) => Promise<unknown>,
+    resolveWithCB: ResolveWithCallback,
     requestLockQueue: LocksInfo,
     heldLockSet: LocksInfo
   ) {
@@ -434,31 +447,27 @@ export class LockManager {
     };
   }
 
-  // let cb executed in Micro task
+  // 在微任务中运行回调，等持有记录移除后再兑现 request() 返回的 Promise。
   private _resolveWithCB(
     cb: LockGrantedCallback,
     resolve: (value?: unknown) => void,
     reject: (reason?: any) => void
-  ) {
-    return (args: Lock | null) => {
-      return new Promise((_resolve) => {
-        new Promise((res) => res("")).then(async () => {
+  ): ResolveWithCallback {
+    return (lock, release) =>
+      Promise.resolve()
+        .then(async () => {
           try {
-            const res = await cb(args);
-            _resolve(res);
-            resolve(res);
-          } catch (error) {
-            _resolve(error);
-            reject(error);
+            return await cb(lock);
+          } finally {
+            await release?.();
           }
-        });
-      });
-    };
+        })
+        .then(resolve, reject);
   }
 
   private async _handleNewHeldLock(
     request: Request,
-    resolveWithCB: (args: Lock | null) => Promise<unknown>,
+    resolveWithCB: ResolveWithCallback,
     currentHeldLockSet?: LocksInfo
   ) {
     this._pushToHeldLockSet(request, currentHeldLockSet);
@@ -474,33 +483,45 @@ export class LockManager {
       return request.reject(this._getAbortError(request.signal));
     }
 
-    // check and handle if this held lock has been steal
-    let callBackResolved = false;
-    let rejectedForSteal = false;
-    const listener = () => {
-      if (
-        !callBackResolved &&
-        !rejectedForSteal &&
-        !this._isInHeldLockSet(request.uuid)
-      ) {
-        this._handleHeldLockBeSteal(request);
-        rejectedForSteal = true;
-        return true;
-      }
-      return false;
-    };
-    onStorageChange(STORAGE_KEYS.HELD_LOCK_SET, listener);
+    await this._runHeldLockCallback(request, resolveWithCB);
+  }
 
-    resolveWithCB({ name: request.name, mode: request.mode }).then(() => {
-      callBackResolved = true;
-      this._updateHeldAndRequestLocks(request);
-    });
+  // 回调运行期间持续监听抢占，使 request() 可以在回调结束前拒绝。
+  private _runHeldLockCallback(
+    request: Request,
+    resolveWithCB: ResolveWithCallback,
+    fromQueue = false
+  ) {
+    const rejectIfStolen = () => {
+      if (!this._isInHeldLockSet(request.uuid)) {
+        unsubscribe();
+        this._handleHeldLockBeSteal(request);
+      }
+    };
+    const unsubscribe = onStorageChange(
+      STORAGE_KEYS.HELD_LOCK_SET,
+      rejectIfStolen
+    );
+    rejectIfStolen();
+
+    return resolveWithCB(
+      { name: request.name, mode: request.mode },
+      async () => {
+        // 分散各页面上成批获批的共享锁对同一份 localStorage 持有记录的写入。
+        if (fromQueue && request.mode === LOCK_MODE.SHARED) {
+          await sleep(Math.floor(Math.random() * 1000));
+        }
+        unsubscribe();
+        this._updateHeldAndRequestLocks(request);
+      }
+    );
   }
 
   private _handleHeldLockBeSteal(request: Request) {
     request.reject(
       new DOMException(
-        "Lock broken by another request with the 'steal' option."
+        "Lock broken by another request with the 'steal' option.",
+        "AbortError"
       )
     );
   }
@@ -520,66 +541,19 @@ export class LockManager {
     return this._heldLockSet().some((e) => e.uuid === uuid);
   }
 
+  // 等待任一页面把该请求放入持有集合，再切换到持有期间的抢占监听。
   private _handleNewLockRequest(
     request: Request,
-    resolveWithCB: (args: Lock | null) => Promise<unknown>
+    resolveWithCB: ResolveWithCallback
   ) {
     this._pushToLockRequestQueueMap(request);
-    let heldLockWIP = false;
-    const listener = async () => {
-      if (!heldLockWIP && this._isInHeldLockSet(request.uuid)) {
-        heldLockWIP = true;
-        await resolveWithCB({ name: request.name, mode: request.mode });
-        // check and handle if this held lock has been steal
-        if (!this._isInHeldLockSet(request.uuid)) {
-          this._handleHeldLockBeSteal(request);
-        }
-
-        if (request.mode === LOCK_MODE.EXCLUSIVE) {
-          this._updateHeldAndRequestLocks(request);
-        } else if (request.mode === LOCK_MODE.SHARED) {
-          await this._handleSharedLockFromListener(request);
-        }
-        return true;
+    const unsubscribe = onStorageChange(STORAGE_KEYS.HELD_LOCK_SET, () => {
+      if (this._isInHeldLockSet(request.uuid)) {
+        unsubscribe();
+        void this._runHeldLockCallback(request, resolveWithCB, true);
       }
-      return false;
-    };
-    onStorageChange(STORAGE_KEYS.HELD_LOCK_SET, listener);
+    });
   }
-
-  private async _handleSharedLockFromListener(request: Request) {
-    // handle the issue when the shared locks release at the same time
-    await sleep(Math.floor(Math.random() * 1000));
-    const otherUnreleasedSharedHeldLocks = this._heldLockSet().filter(
-      (lock) =>
-        lock.name === request.name &&
-        lock.uuid !== request.uuid &&
-        lock.mode === LOCK_MODE.SHARED
-    );
-    if (otherUnreleasedSharedHeldLocks.length) {
-      this._storeHeldLockSet(otherUnreleasedSharedHeldLocks);
-      // this._handleSharedLocksRelease(request);
-    } else {
-      this._updateHeldAndRequestLocks(request);
-    }
-  }
-
-  // private _handleSharedLocksRelease(request: Request) {
-  //   let latestHeldLockSet = this._heldLockSet();
-  //   if (!latestHeldLockSet.some((lock) => lock.name === request.name)) {
-  //     const requestLockQueueMap = this._requestLockQueueMap();
-  //     const [firstRequestLock, ...restRequestLocks] =
-  //       requestLockQueueMap[request.name] || [];
-  //     if (firstRequestLock) {
-  //       latestHeldLockSet.push(firstRequestLock);
-  //       requestLockQueueMap[request.name] = restRequestLocks;
-  //       this._storeHeldLockSetAndRequestLockQueueMap(
-  //         latestHeldLockSet,
-  //         requestLockQueueMap
-  //       );
-  //     }
-  //   }
-  // }
 
   private _storeHeldLockSetAndRequestLockQueueMap(
     heldLockSet: LocksInfo,
@@ -610,56 +584,24 @@ export class LockManager {
     });
   }
 
+  // 先移除离开客户端的所有请求，再用剩余持有锁判断队列能否继续。
   private _cleanClientLocksByClientId(clientId: string) {
     const requestLockQueueMap = this._requestLockQueueMap();
     this._cleanRequestLockQueueByClientId(requestLockQueueMap, clientId);
 
-    let newHeldLockSet: LocksInfo = this._cleanHeldLockSetByClientId(
-      requestLockQueueMap,
-      clientId
-    );
-
+    const releasedNames = new Set<string>();
+    const heldLockSet = this._heldLockSet().filter((lock) => {
+      if (lock.clientId !== clientId) return true;
+      releasedNames.add(lock.name);
+      return false;
+    });
+    releasedNames.forEach((name) => {
+      this._grantPendingLocks(name, heldLockSet, requestLockQueueMap);
+    });
     this._storeHeldLockSetAndRequestLockQueueMap(
-      newHeldLockSet,
+      heldLockSet,
       requestLockQueueMap
     );
-  }
-
-  private _cleanHeldLockSetByClientId(
-    requestLockQueueMap: RequestQueueMap,
-    clientId: string
-  ) {
-    const heldLockSet = this._heldLockSet();
-    let newHeldLockSet: LocksInfo = [];
-
-    heldLockSet.forEach((element) => {
-      if (element.clientId !== clientId) {
-        newHeldLockSet.push(element);
-      } else {
-        const requestLockQueue = requestLockQueueMap[element.name] || [];
-        const [firstRequestLock, ...restRequestLocks] = requestLockQueue;
-        if (firstRequestLock) {
-          if (
-            firstRequestLock.mode === LOCK_MODE.EXCLUSIVE ||
-            restRequestLocks.length === 0
-          ) {
-            newHeldLockSet.push(firstRequestLock);
-            requestLockQueueMap[element.name] = restRequestLocks;
-          } else if (firstRequestLock.mode === LOCK_MODE.SHARED) {
-            let nonSharedLockIndex = requestLockQueue.findIndex(
-              (lock) => lock.mode !== LOCK_MODE.SHARED
-            );
-            if (nonSharedLockIndex === -1)
-              nonSharedLockIndex = requestLockQueue.length;
-            newHeldLockSet = [
-              ...newHeldLockSet,
-              ...requestLockQueue.splice(0, nonSharedLockIndex),
-            ];
-          }
-        }
-      }
-    });
-    return newHeldLockSet;
   }
 
   private _cleanRequestLockQueueByClientId(

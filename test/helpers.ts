@@ -7,6 +7,14 @@ export function createWebLocksInstance() {
   return new LockManager();
 }
 
+export function defer() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
 export const neverSettledPromise = new Promise((resolve) => {
   /* never */
 });

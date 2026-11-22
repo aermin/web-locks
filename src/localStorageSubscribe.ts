@@ -24,27 +24,18 @@ export function removeStorageItem(key: string) {
   return window.localStorage.removeItem(key);
 }
 
-export function onStorageChange(
-  key: string,
-  listener: () => Promise<boolean> | boolean
-) {
-  const documentListener = async function () {
-    const needRemoveListener = await listener();
-    if (needRemoveListener) {
-      document.removeEventListener(key, documentListener);
-    }
-  };
-
-  document.addEventListener(key, documentListener, false);
-
-  const windowListener = async function (event: StorageEvent) {
+// 同一页面和其他页面的写入走不同的事件，取消订阅时必须同时移除两种监听。
+export function onStorageChange(key: string, listener: () => void) {
+  const windowListener = (event: StorageEvent) => {
     if (event.storageArea === localStorage && event.key === key) {
-      const needRemoveListener = await listener();
-      if (needRemoveListener) {
-        window.removeEventListener("storage", windowListener);
-      }
+      listener();
     }
   };
 
+  document.addEventListener(key, listener, false);
   window.addEventListener("storage", windowListener, false);
+  return () => {
+    document.removeEventListener(key, listener);
+    window.removeEventListener("storage", windowListener);
+  };
 }
