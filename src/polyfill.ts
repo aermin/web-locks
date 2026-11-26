@@ -5,7 +5,6 @@ import {
   setStorageItem,
   removeStorageItem,
 } from "./localStorageSubscribe";
-import { sleep } from "./sleep";
 
 const LOCK_MODE = {
   EXCLUSIVE: "exclusive",
@@ -37,7 +36,7 @@ type LockGrantedCallback = (lock?: Lock | null) => Promise<any> | any;
 
 type ResolveWithCallback = (
   lock: Lock | null,
-  release?: () => Promise<void>
+  release?: () => void
 ) => Promise<void>;
 
 export type LockInfo = Lock & {
@@ -220,7 +219,10 @@ export class LockManager {
     const heldLockIndex = heldLockSet.findIndex(
       (lock) => lock.uuid === request.uuid
     );
-    if (heldLockIndex === -1) return;
+    if (heldLockIndex === -1) {
+      this._handleHeldLockBeSteal(request);
+      return;
+    }
 
     heldLockSet.splice(heldLockIndex, 1);
     const requestLockQueueMap = this._requestLockQueueMap();
@@ -459,7 +461,7 @@ export class LockManager {
           try {
             return await cb(lock);
           } finally {
-            await release?.();
+            release?.();
           }
         })
         .then(resolve, reject);
@@ -489,8 +491,7 @@ export class LockManager {
   // 回调运行期间持续监听抢占，使 request() 可以在回调结束前拒绝。
   private _runHeldLockCallback(
     request: Request,
-    resolveWithCB: ResolveWithCallback,
-    fromQueue = false
+    resolveWithCB: ResolveWithCallback
   ) {
     const rejectIfStolen = () => {
       if (!this._isInHeldLockSet(request.uuid)) {
@@ -504,17 +505,10 @@ export class LockManager {
     );
     rejectIfStolen();
 
-    return resolveWithCB(
-      { name: request.name, mode: request.mode },
-      async () => {
-        // 分散各页面上成批获批的共享锁对同一份 localStorage 持有记录的写入。
-        if (fromQueue && request.mode === LOCK_MODE.SHARED) {
-          await sleep(Math.floor(Math.random() * 1000));
-        }
-        unsubscribe();
-        this._updateHeldAndRequestLocks(request);
-      }
-    );
+    return resolveWithCB({ name: request.name, mode: request.mode }, () => {
+      unsubscribe();
+      this._updateHeldAndRequestLocks(request);
+    });
   }
 
   private _handleHeldLockBeSteal(request: Request) {
@@ -547,10 +541,12 @@ export class LockManager {
     resolveWithCB: ResolveWithCallback
   ) {
     this._pushToLockRequestQueueMap(request);
-    const unsubscribe = onStorageChange(STORAGE_KEYS.HELD_LOCK_SET, () => {
-      if (this._isInHeldLockSet(request.uuid)) {
+    const unsubscribe = onStorageChange(STORAGE_KEYS.HELD_LOCK_SET, (value) => {
+      // 按通知中的快照识别授予，避免后续抢占已覆盖 localStorage 时漏掉该请求。
+      const heldLockSet: LocksInfo = (value && JSON.parse(value)) || [];
+      if (heldLockSet.some((lock) => lock.uuid === request.uuid)) {
         unsubscribe();
-        void this._runHeldLockCallback(request, resolveWithCB, true);
+        void this._runHeldLockCallback(request, resolveWithCB);
       }
     });
   }
