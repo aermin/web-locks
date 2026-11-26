@@ -24,27 +24,24 @@ export function removeStorageItem(key: string) {
   return window.localStorage.removeItem(key);
 }
 
+// 同一页面和其他页面的写入走不同的事件，取消订阅时必须同时移除两种监听。
 export function onStorageChange(
   key: string,
-  listener: () => Promise<boolean> | boolean
+  listener: (value: string | null) => void
 ) {
-  const documentListener = async function () {
-    const needRemoveListener = await listener();
-    if (needRemoveListener) {
-      document.removeEventListener(key, documentListener);
+  const documentListener = (event: Event) => {
+    listener((event as EventType).value ?? null);
+  };
+  const windowListener = (event: StorageEvent) => {
+    if (event.storageArea === localStorage && event.key === key) {
+      listener(event.newValue);
     }
   };
 
   document.addEventListener(key, documentListener, false);
-
-  const windowListener = async function (event: StorageEvent) {
-    if (event.storageArea === localStorage && event.key === key) {
-      const needRemoveListener = await listener();
-      if (needRemoveListener) {
-        window.removeEventListener("storage", windowListener);
-      }
-    }
-  };
-
   window.addEventListener("storage", windowListener, false);
+  return () => {
+    document.removeEventListener(key, documentListener);
+    window.removeEventListener("storage", windowListener);
+  };
 }
